@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button"
 import { Calendar } from "@/components/ui/calendar"
 import { Badge } from "@/components/ui/badge"
 import { CalendarPlus, Check, X, Trash2 } from "lucide-react"
-import { format, eachDayOfInterval, parseISO } from "date-fns"
+import { format, eachDayOfInterval, parseISO, isSameDay } from "date-fns"
 import { ko } from "date-fns/locale"
 import type { DateRange as DayPickerDateRange } from "react-day-picker"
 
@@ -81,6 +81,29 @@ export function DateInputForm({ participant, onDateRangeAdded }: DateInputFormPr
 
   const { availableDates, unavailableDates } = getExistingDates()
 
+  // Get selected range dates for visual feedback
+  const getSelectedRangeDates = () => {
+    if (!selectedRange?.from) return []
+    
+    const endDate = selectedRange.to || selectedRange.from
+    return eachDayOfInterval({
+      start: selectedRange.from,
+      end: endDate,
+    })
+  }
+
+  const selectedRangeDates = getSelectedRangeDates()
+
+  // Custom day class function for selection preview
+  const getModifiersClassNames = () => {
+    const baseClasses = {
+      available: "bg-muted text-muted-foreground rounded-md",
+      unavailable: "bg-red-100 dark:bg-red-950/40 text-red-700 dark:text-red-300 rounded-md",
+    }
+
+    return baseClasses
+  }
+
   return (
     <Card>
       <CardHeader>
@@ -123,13 +146,43 @@ export function DateInputForm({ participant, onDateRangeAdded }: DateInputFormPr
             modifiers={{
               available: availableDates,
               unavailable: unavailableDates,
+              selectionPreview: selectedRangeDates,
             }}
             modifiersClassNames={{
-              available: "bg-available/20 text-available rounded-md",
-              unavailable: "bg-unavailable/20 text-unavailable rounded-md",
+              ...getModifiersClassNames(),
+              selectionPreview: isAvailable 
+                ? "ring-2 ring-inset ring-zinc-400 dark:ring-zinc-500" 
+                : "ring-2 ring-inset ring-red-300 dark:ring-red-700",
+            }}
+            classNames={{
+              range_start: isAvailable 
+                ? "rounded-l-md bg-zinc-200 dark:bg-zinc-700" 
+                : "rounded-l-md bg-red-200 dark:bg-red-900/60",
+              range_middle: isAvailable 
+                ? "rounded-none bg-zinc-100 dark:bg-zinc-800" 
+                : "rounded-none bg-red-100 dark:bg-red-950/40",
+              range_end: isAvailable 
+                ? "rounded-r-md bg-zinc-200 dark:bg-zinc-700" 
+                : "rounded-r-md bg-red-200 dark:bg-red-900/60",
             }}
           />
         </div>
+
+        {selectedRange?.from && (
+          <div className={`text-sm p-3 rounded-lg border ${
+            isAvailable 
+              ? "bg-zinc-50 dark:bg-zinc-900 border-zinc-200 dark:border-zinc-700" 
+              : "bg-red-50 dark:bg-red-950/30 border-red-200 dark:border-red-800"
+          }`}>
+            <span className="font-medium">
+              {isAvailable ? "가능" : "불가능"} 기간:
+            </span>{" "}
+            {format(selectedRange.from, "yyyy년 M월 d일", { locale: ko })}
+            {selectedRange.to && !isSameDay(selectedRange.from, selectedRange.to) && (
+              <> ~ {format(selectedRange.to, "yyyy년 M월 d일", { locale: ko })}</>
+            )}
+          </div>
+        )}
 
         <Button
           onClick={handleSubmit}
@@ -152,8 +205,8 @@ export function DateInputForm({ participant, onDateRangeAdded }: DateInputFormPr
                     <Badge
                       variant="secondary"
                       className={range.is_available 
-                        ? "bg-available/20 text-available border-available/30" 
-                        : "bg-unavailable/20 text-unavailable border-unavailable/30"
+                        ? "bg-zinc-200 dark:bg-zinc-700 text-zinc-700 dark:text-zinc-200" 
+                        : "bg-red-100 dark:bg-red-900/60 text-red-700 dark:text-red-200"
                       }
                     >
                       {range.is_available ? "가능" : "불가능"}

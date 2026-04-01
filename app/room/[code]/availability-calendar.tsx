@@ -94,21 +94,27 @@ export function AvailabilityCalendar({ participants, currentParticipantId }: Ava
     const unavailableCount = availability.unavailable.length
 
     if (availableCount === totalParticipants && unavailableCount === 0) {
-      return "bg-available text-available-foreground font-medium"
+      return "bg-zinc-300 dark:bg-zinc-600 text-zinc-900 dark:text-zinc-100 font-medium"
     }
 
     if (unavailableCount === totalParticipants) {
-      return "bg-unavailable text-unavailable-foreground font-medium"
+      return "bg-red-200 dark:bg-red-900/60 text-red-800 dark:text-red-200 font-medium"
     }
 
     if (availableCount > unavailableCount) {
-      const opacity = Math.min(0.2 + (availableCount / totalParticipants) * 0.6, 0.8)
-      return `bg-available/${Math.round(opacity * 100)} text-available`
+      const ratio = availableCount / totalParticipants
+      if (ratio > 0.6) {
+        return "bg-zinc-200 dark:bg-zinc-700 text-zinc-700 dark:text-zinc-200"
+      }
+      return "bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-300"
     }
 
     if (unavailableCount > availableCount) {
-      const opacity = Math.min(0.2 + (unavailableCount / totalParticipants) * 0.6, 0.8)
-      return `bg-unavailable/${Math.round(opacity * 100)} text-unavailable`
+      const ratio = unavailableCount / totalParticipants
+      if (ratio > 0.6) {
+        return "bg-red-100 dark:bg-red-950/50 text-red-700 dark:text-red-300"
+      }
+      return "bg-red-50 dark:bg-red-950/30 text-red-600 dark:text-red-400"
     }
 
     return "bg-muted/50"
@@ -176,11 +182,11 @@ export function AvailabilityCalendar({ participants, currentParticipantId }: Ava
       <CardContent>
         <div className="flex gap-4 mb-4 text-sm">
           <div className="flex items-center gap-2">
-            <div className="w-4 h-4 rounded bg-available" />
+            <div className="w-4 h-4 rounded bg-zinc-300 dark:bg-zinc-600" />
             <span className="text-muted-foreground">가능</span>
           </div>
           <div className="flex items-center gap-2">
-            <div className="w-4 h-4 rounded bg-unavailable" />
+            <div className="w-4 h-4 rounded bg-red-200 dark:bg-red-900/60" />
             <span className="text-muted-foreground">불가능</span>
           </div>
         </div>
@@ -216,10 +222,10 @@ export function AvailabilityCalendar({ participants, currentParticipantId }: Ava
                       {availability && (availability.available.length > 0 || availability.unavailable.length > 0) && (
                         <div className="flex gap-0.5 mt-0.5">
                           {availability.available.length > 0 && (
-                            <div className="w-1.5 h-1.5 rounded-full bg-available" />
+                            <div className="w-1.5 h-1.5 rounded-full bg-zinc-500 dark:bg-zinc-400" />
                           )}
                           {availability.unavailable.length > 0 && (
-                            <div className="w-1.5 h-1.5 rounded-full bg-unavailable" />
+                            <div className="w-1.5 h-1.5 rounded-full bg-red-400 dark:bg-red-500" />
                           )}
                         </div>
                       )}
@@ -232,7 +238,7 @@ export function AvailabilityCalendar({ participants, currentParticipantId }: Ava
                       </p>
                       {availability.available.length > 0 && (
                         <div className="flex items-start gap-2 mb-1">
-                          <Check className="h-4 w-4 text-available mt-0.5" />
+                          <Check className="h-4 w-4 text-zinc-600 dark:text-zinc-300 mt-0.5" />
                           <span className="text-sm">
                             {availability.available.join(", ")}
                           </span>
@@ -240,7 +246,7 @@ export function AvailabilityCalendar({ participants, currentParticipantId }: Ava
                       )}
                       {availability.unavailable.length > 0 && (
                         <div className="flex items-start gap-2">
-                          <X className="h-4 w-4 text-unavailable mt-0.5" />
+                          <X className="h-4 w-4 text-red-500 dark:text-red-400 mt-0.5" />
                           <span className="text-sm">
                             {availability.unavailable.join(", ")}
                           </span>
@@ -262,7 +268,7 @@ export function AvailabilityCalendar({ participants, currentParticipantId }: Ava
                 <Badge
                   key={date}
                   variant="secondary"
-                  className="bg-available/10 text-available border-available/20"
+                  className="bg-zinc-100 dark:bg-zinc-800 text-zinc-700 dark:text-zinc-200 border-zinc-200 dark:border-zinc-700"
                 >
                   {format(parseISO(date), "M/d (E)", { locale: ko })} - {available}명 가능
                 </Badge>
