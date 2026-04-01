@@ -21,6 +21,7 @@ import {
   isToday,
 } from "date-fns"
 import { ko } from "date-fns/locale"
+import { Checkbox } from "@/components/ui/checkbox"
 import {
   Tooltip,
   TooltipContent,
@@ -40,11 +41,14 @@ interface DateAvailability {
 
 export function AvailabilityCalendar({ participants, currentParticipantId }: AvailabilityCalendarProps) {
   const [currentMonth, setCurrentMonth] = useState(new Date())
+  const [onlyPerfectRecommendations, setOnlyPerfectRecommendations] = useState(false)
 
   const dateAvailabilityMap = useMemo(() => {
     const map = new Map<string, DateAvailability>()
 
-    participants.forEach((participant) => {
+    const activeParticipants = participants.filter((p) => !p.deleted_at)
+
+    activeParticipants.forEach((participant) => {
       participant.date_ranges.forEach((range) => {
         const dates = eachDayOfInterval({
           start: parseISO(range.start_date),
@@ -84,7 +88,7 @@ export function AvailabilityCalendar({ participants, currentParticipantId }: Ava
   const getDateClasses = (date: Date) => {
     const dateKey = format(date, "yyyy-MM-dd")
     const availability = dateAvailabilityMap.get(dateKey)
-    const totalParticipants = participants.length
+    const totalParticipants = participants.filter((p) => !p.deleted_at).length
 
     if (!availability || totalParticipants === 0) {
       return "bg-muted/30"
@@ -93,38 +97,34 @@ export function AvailabilityCalendar({ participants, currentParticipantId }: Ava
     const availableCount = availability.available.length
     const unavailableCount = availability.unavailable.length
 
+    // 4. 모두 가능한 구간: 파스텔 파란색
     if (availableCount === totalParticipants && unavailableCount === 0) {
-      return "bg-zinc-300 dark:bg-zinc-600 text-zinc-900 dark:text-zinc-100 font-medium"
+      return "bg-sky-200 dark:bg-sky-700 text-sky-900 dark:text-sky-50 font-medium"
     }
 
+    // 2. 모두 불가능한 기간: 파스텔 붉은색
     if (unavailableCount === totalParticipants) {
-      return "bg-red-200 dark:bg-red-900/60 text-red-800 dark:text-red-200 font-medium"
+      return "bg-red-200 dark:bg-red-700 text-red-900 dark:text-red-50 font-medium"
     }
 
-    if (availableCount > unavailableCount) {
-      const ratio = availableCount / totalParticipants
-      if (ratio > 0.6) {
-        return "bg-zinc-200 dark:bg-zinc-700 text-zinc-700 dark:text-zinc-200"
-      }
-      return "bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-300"
+    // 3. 가능/불가능 겹치는 구간: 파스텔 보라색
+    if (availableCount > 0 && unavailableCount > 0) {
+      return "bg-violet-200 dark:bg-violet-700 text-violet-900 dark:text-violet-50"
     }
 
-    if (unavailableCount > availableCount) {
-      const ratio = unavailableCount / totalParticipants
-      if (ratio > 0.6) {
-        return "bg-red-100 dark:bg-red-950/50 text-red-700 dark:text-red-300"
-      }
-      return "bg-red-50 dark:bg-red-950/30 text-red-600 dark:text-red-400"
+    // 1. 일부 가능한 일정(누군가는 가능, 모두 가능은 아님): 파스텔 연두색
+    if (availableCount > 0 && unavailableCount === 0) {
+      return "bg-emerald-200 dark:bg-emerald-700 text-emerald-900 dark:text-emerald-50"
     }
 
     return "bg-muted/50"
   }
 
   const getBestDates = () => {
-    const totalParticipants = participants.length
+    const totalParticipants = participants.filter((p) => !p.deleted_at).length
     if (totalParticipants === 0) return []
 
-    const scores: { date: string; score: number; available: number }[] = []
+    const scores: { date: string; score: number; available: number; unavailable: number }[] = []
 
     dateAvailabilityMap.forEach((availability, dateKey) => {
       const availableCount = availability.available.length
@@ -132,7 +132,7 @@ export function AvailabilityCalendar({ participants, currentParticipantId }: Ava
       const score = availableCount - unavailableCount
 
       if (availableCount > 0) {
-        scores.push({ date: dateKey, score, available: availableCount })
+        scores.push({ date: dateKey, score, available: availableCount, unavailable: unavailableCount })
       }
     })
 
@@ -141,7 +141,12 @@ export function AvailabilityCalendar({ participants, currentParticipantId }: Ava
       .slice(0, 3)
   }
 
-  const bestDates = getBestDates()
+  const bestDatesAll = getBestDates()
+  const totalActive = participants.filter((p) => !p.deleted_at).length
+  const bestDatesPerfect = bestDatesAll.filter(
+    (d) => d.available === totalActive && d.unavailable === 0
+  )
+  const bestDates = onlyPerfectRecommendations ? bestDatesPerfect : bestDatesAll
 
   return (
     <Card>
@@ -180,14 +185,22 @@ export function AvailabilityCalendar({ participants, currentParticipantId }: Ava
         </div>
       </CardHeader>
       <CardContent>
-        <div className="flex gap-4 mb-4 text-sm">
+        <div className="flex flex-wrap gap-4 mb-4 text-sm">
           <div className="flex items-center gap-2">
-            <div className="w-4 h-4 rounded bg-zinc-300 dark:bg-zinc-600" />
-            <span className="text-muted-foreground">가능</span>
+            <div className="w-4 h-4 rounded bg-emerald-200 dark:bg-emerald-700" />
+            <span className="text-muted-foreground">일부 가능 (누군가는 가능)</span>
           </div>
           <div className="flex items-center gap-2">
-            <div className="w-4 h-4 rounded bg-red-200 dark:bg-red-900/60" />
-            <span className="text-muted-foreground">불가능</span>
+            <div className="w-4 h-4 rounded bg-red-200 dark:bg-red-700" />
+            <span className="text-muted-foreground">모두 불가능</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <div className="w-4 h-4 rounded bg-violet-200 dark:bg-violet-700" />
+            <span className="text-muted-foreground">가능/불가능 혼합</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <div className="w-4 h-4 rounded bg-sky-200 dark:bg-sky-700" />
+            <span className="text-muted-foreground">모두 가능</span>
           </div>
         </div>
 
@@ -222,10 +235,10 @@ export function AvailabilityCalendar({ participants, currentParticipantId }: Ava
                       {availability && (availability.available.length > 0 || availability.unavailable.length > 0) && (
                         <div className="flex gap-0.5 mt-0.5">
                           {availability.available.length > 0 && (
-                            <div className="w-1.5 h-1.5 rounded-full bg-zinc-500 dark:bg-zinc-400" />
+                            <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 dark:bg-emerald-400" />
                           )}
                           {availability.unavailable.length > 0 && (
-                            <div className="w-1.5 h-1.5 rounded-full bg-red-400 dark:bg-red-500" />
+                            <div className="w-1.5 h-1.5 rounded-full bg-zinc-500 dark:bg-zinc-400" />
                           )}
                         </div>
                       )}
@@ -238,7 +251,7 @@ export function AvailabilityCalendar({ participants, currentParticipantId }: Ava
                       </p>
                       {availability.available.length > 0 && (
                         <div className="flex items-start gap-2 mb-1">
-                          <Check className="h-4 w-4 text-zinc-600 dark:text-zinc-300 mt-0.5" />
+                          <Check className="h-4 w-4 text-emerald-600 dark:text-emerald-300 mt-0.5" />
                           <span className="text-sm">
                             {availability.available.join(", ")}
                           </span>
@@ -246,7 +259,7 @@ export function AvailabilityCalendar({ participants, currentParticipantId }: Ava
                       )}
                       {availability.unavailable.length > 0 && (
                         <div className="flex items-start gap-2">
-                          <X className="h-4 w-4 text-red-500 dark:text-red-400 mt-0.5" />
+                          <X className="h-4 w-4 text-zinc-500 dark:text-zinc-300 mt-0.5" />
                           <span className="text-sm">
                             {availability.unavailable.join(", ")}
                           </span>
@@ -260,20 +273,44 @@ export function AvailabilityCalendar({ participants, currentParticipantId }: Ava
           </TooltipProvider>
         </div>
 
-        {bestDates.length > 0 && (
+        {bestDatesAll.length > 0 && (
           <div className="mt-6 pt-4 border-t">
-            <h3 className="text-sm font-medium mb-3">추천 날짜</h3>
-            <div className="flex flex-wrap gap-2">
-              {bestDates.map(({ date, available }) => (
-                <Badge
-                  key={date}
-                  variant="secondary"
-                  className="bg-zinc-100 dark:bg-zinc-800 text-zinc-700 dark:text-zinc-200 border-zinc-200 dark:border-zinc-700"
+            <div className="flex items-center justify-between gap-2 mb-3">
+              <h3 className="text-sm font-medium">추천 날짜</h3>
+              <div className="flex items-center gap-2">
+                <Checkbox
+                  id="only-perfect-recommendations"
+                  checked={onlyPerfectRecommendations}
+                  onCheckedChange={(checked) =>
+                    setOnlyPerfectRecommendations(checked === true)
+                  }
+                  className="h-3.5 w-3.5"
+                />
+                <label
+                  htmlFor="only-perfect-recommendations"
+                  className="text-xs text-muted-foreground cursor-pointer select-none"
                 >
-                  {format(parseISO(date), "M/d (E)", { locale: ko })} - {available}명 가능
-                </Badge>
-              ))}
+                  모두 가능한 날짜만 보기
+                </label>
+              </div>
             </div>
+            {bestDates.length > 0 ? (
+              <div className="flex flex-wrap gap-2">
+                {bestDates.map(({ date, available }) => (
+                  <Badge
+                    key={date}
+                    variant="secondary"
+                    className="bg-zinc-100 dark:bg-zinc-800 text-zinc-700 dark:text-zinc-200 border-zinc-200 dark:border-zinc-700"
+                  >
+                    {format(parseISO(date), "M/d (E)", { locale: ko })} - {available}명 가능
+                  </Badge>
+                ))}
+              </div>
+            ) : (
+              <p className="text-xs text-muted-foreground">
+                현재 조건에 맞는 추천 날짜가 없습니다.
+              </p>
+            )}
           </div>
         )}
       </CardContent>

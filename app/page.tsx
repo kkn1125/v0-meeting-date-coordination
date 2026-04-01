@@ -5,13 +5,18 @@ import { useRouter } from "next/navigation"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import { Badge } from "@/components/ui/badge"
 import { FieldGroup, Field, FieldLabel } from "@/components/ui/field"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog"
-import { CalendarDays, Users, Plus, LogIn, UserPlus, Hash } from "lucide-react"
+import { CalendarDays, Users, Plus, LogIn, UserPlus, Hash, LogOut, DoorOpen } from "lucide-react"
 import { createClient } from "@/lib/supabase/client"
-import { setSessionToStorage } from "@/lib/auth"
-import type { SessionPayload } from "@/lib/types"
+import {
+  getGlobalSessionFromStorage,
+  setGlobalSessionToStorage,
+  clearGlobalSessionFromStorage,
+} from "@/lib/auth"
+import type { GlobalSessionPayload } from "@/lib/types"
 
 function generateRoomCode(): string {
   const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
@@ -20,6 +25,14 @@ function generateRoomCode(): string {
     code += chars.charAt(Math.floor(Math.random() * chars.length))
   }
   return code
+}
+
+interface JoinedRoom {
+  id: string
+  name: string
+  code: string
+  createdAt: string
+  isHost: boolean
 }
 
 export default function HomePage() {
@@ -31,7 +44,10 @@ export default function HomePage() {
   const [error, setError] = useState("")
   const [roomCount, setRoomCount] = useState<number | null>(null)
 
-  // Auth modal states
+  const [globalSession, setGlobalSession] = useState<GlobalSessionPayload | null>(null)
+  const [joinedRooms, setJoinedRooms] = useState<JoinedRoom[]>([])
+  const [isLoadingJoinedRooms, setIsLoadingJoinedRooms] = useState(false)
+
   const [showAuthModal, setShowAuthModal] = useState(false)
   const [authMode, setAuthMode] = useState<"signup" | "login">("signup")
   const [authName, setAuthName] = useState("")
@@ -39,7 +55,6 @@ export default function HomePage() {
   const [authConfirmPassword, setAuthConfirmPassword] = useState("")
   const [authError, setAuthError] = useState("")
   const [isAuthSubmitting, setIsAuthSubmitting] = useState(false)
-  const [pendingRoomData, setPendingRoomData] = useState<{ code: string; id: string } | null>(null)
 
   useEffect(() => {
     fetch("/api/rooms/count")
@@ -48,7 +63,50 @@ export default function HomePage() {
       .catch(console.error)
   }, [])
 
+  useEffect(() => {
+    const session = getGlobalSessionFromStorage()
+    if (session) {
+      setGlobalSession(session)
+      void loadJoinedRooms(session.name)
+    }
+  }, [])
+
+  const loadJoinedRooms = async (name: string) => {
+    setIsLoadingJoinedRooms(true)
+    try {
+      const res = await fetch("/api/rooms/by-user", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name }),
+      })
+      const data = await res.json()
+      if (!res.ok) {
+        console.error(data.error || "참여한 모임을 불러오지 못했습니다.")
+        setJoinedRooms([])
+        return
+      }
+      setJoinedRooms(data.rooms || [])
+    } catch (e) {
+      console.error(e)
+      setJoinedRooms([])
+    } finally {
+      setIsLoadingJoinedRooms(false)
+    }
+  }
+
+  const requireLogin = () => {
+    if (!globalSession) {
+      setError("로그인 후 이용하실 수 있습니다.")
+      setAuthMode("login")
+      setShowAuthModal(true)
+      return false
+    }
+    return true
+  }
+
   const handleCreateRoom = async () => {
+    if (!requireLogin()) return
+
     if (!roomName.trim()) {
       setError("모임 이름을 입력해주세요.")
       return
@@ -61,18 +119,36 @@ export default function HomePage() {
       const supabase = createClient()
       const code = generateRoomCode()
 
-      const { data, error: insertError } = await supabase
+      const { data: room, error: insertError } = await supabase
         .from("rooms")
         .insert({ name: roomName.trim(), code })
         .select()
         .single()
 
-      if (insertError) throw insertError
+      if (insertError || !room) throw insertError
 
-      // Save room data and show auth modal
-      setPendingRoomData({ code: data.code, id: data.id })
-      setShowAuthModal(true)
-      setAuthMode("signup")
+      if (globalSession) {
+        const { data: host, error: participantError } = await supabase
+          .from("participants")
+          .insert({
+            room_id: room.id,
+            name: globalSession.name,
+            is_host: true,
+          })
+          .select("id")
+          .single()
+
+        if (participantError) {
+          console.error(participantError)
+        } else if (host) {
+          await supabase
+            .from("rooms")
+            .update({ creator_participant_id: host.id })
+            .eq("id", room.id)
+        }
+      }
+
+      router.push(`/room/${room.code}`)
     } catch (err) {
       console.error(err)
       setError("모임 생성에 실패했습니다. 다시 시도해주세요.")
@@ -82,6 +158,8 @@ export default function HomePage() {
   }
 
   const handleJoinRoom = async () => {
+    if (!requireLogin()) return
+
     if (!joinCode.trim()) {
       setError("참여 코드를 입력해주세요.")
       return
@@ -133,7 +211,6 @@ export default function HomePage() {
 
     try {
       if (authMode === "signup") {
-        // Get password hash from server
         const signupRes = await fetch("/api/auth/signup", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -147,41 +224,33 @@ export default function HomePage() {
           return
         }
 
-        if (pendingRoomData) {
-          // Create participant as host for new room
-          const supabase = createClient()
-
-          const { data: participant, error: participantError } = await supabase
-            .from("participants")
-            .insert({
-              room_id: pendingRoomData.id,
-              name: authName.trim(),
-              password_hash: signupData.passwordHash,
-              is_host: true,
-            })
-            .select()
-            .single()
-
-          if (participantError) throw participantError
-
-          // Update room with creator
-          await supabase
-            .from("rooms")
-            .update({ creator_participant_id: participant.id })
-            .eq("id", pendingRoomData.id)
-
-          // Create session
-          const session: SessionPayload = {
-            participantId: participant.id,
-            roomId: pendingRoomData.id,
-            name: participant.name,
-            isHost: true,
-            expiresAt: Date.now() + 30 * 60 * 1000,
-          }
-          setSessionToStorage(session)
-
-          router.push(`/room/${pendingRoomData.code}`)
+        const session: GlobalSessionPayload = {
+          name: signupData.name ?? authName.trim(),
+          expiresAt: Date.now() + 30 * 60 * 1000,
         }
+        setGlobalSession(session)
+        setGlobalSessionToStorage(session)
+        void loadJoinedRooms(session.name)
+        resetAuthModal()
+      } else {
+        const loginRes = await fetch("/api/auth/global-login", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ name: authName.trim(), password: authPassword }),
+        })
+
+        const loginData = await loginRes.json()
+
+        if (!loginRes.ok) {
+          setAuthError(loginData.error || "로그인에 실패했습니다.")
+          return
+        }
+
+        const session = loginData.session as GlobalSessionPayload
+        setGlobalSession(session)
+        setGlobalSessionToStorage(session)
+        void loadJoinedRooms(session.name)
+        resetAuthModal()
       }
     } catch (err) {
       console.error(err)
@@ -197,13 +266,73 @@ export default function HomePage() {
     setAuthPassword("")
     setAuthConfirmPassword("")
     setAuthError("")
-    setPendingRoomData(null)
+  }
+
+  const handleLogout = () => {
+    clearGlobalSessionFromStorage()
+    setGlobalSession(null)
+    setJoinedRooms([])
   }
 
   return (
     <main className="min-h-screen flex items-center justify-center p-4 bg-background">
       <div className="w-full max-w-md">
-        <div className="text-center mb-8">
+        <div className="mb-4 flex items-center justify-between">
+          {globalSession ? (
+            <div className="flex items-center gap-2 text-sm">
+              <span className="text-muted-foreground">안녕하세요,</span>
+              <span className="font-medium">{globalSession.name}</span>
+              <Badge variant="outline" className="text-[10px]">
+                로그인됨
+              </Badge>
+            </div>
+          ) : (
+            <div className="text-xs text-muted-foreground">
+              모임 생성·참여를 위해 먼저 로그인해주세요.
+            </div>
+          )}
+          <div className="flex items-center gap-2">
+            {globalSession ? (
+              <Button
+                size="sm"
+                variant="outline"
+                className="h-8 px-3 gap-1"
+                onClick={handleLogout}
+              >
+                <LogOut className="h-3 w-3" />
+                로그아웃
+              </Button>
+            ) : (
+              <>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="h-8 px-3 gap-1"
+                  onClick={() => {
+                    setAuthMode("login")
+                    setShowAuthModal(true)
+                  }}
+                >
+                  <LogIn className="h-3 w-3" />
+                  로그인
+                </Button>
+                <Button
+                  size="sm"
+                  className="h-8 px-3 gap-1"
+                  onClick={() => {
+                    setAuthMode("signup")
+                    setShowAuthModal(true)
+                  }}
+                >
+                  <UserPlus className="h-3 w-3" />
+                  회원가입
+                </Button>
+              </>
+            )}
+          </div>
+        </div>
+
+        <div className="text-center mb-6">
           <div className="flex justify-center mb-4">
             <div className="p-3 rounded-full bg-primary/10">
               <CalendarDays className="h-10 w-10 text-primary" />
@@ -247,11 +376,16 @@ export default function HomePage() {
                 </FieldGroup>
                 <Button
                   onClick={handleCreateRoom}
-                  disabled={isCreating}
+                  disabled={isCreating || !globalSession}
                   className="w-full mt-4"
                 >
                   {isCreating ? "생성 중..." : "모임 만들기"}
                 </Button>
+                {!globalSession && (
+                  <p className="mt-2 text-xs text-muted-foreground text-center">
+                    로그인 후 모임을 만들 수 있습니다.
+                  </p>
+                )}
               </TabsContent>
 
               <TabsContent value="join" className="mt-6">
@@ -271,11 +405,16 @@ export default function HomePage() {
                 </FieldGroup>
                 <Button
                   onClick={handleJoinRoom}
-                  disabled={isJoining}
+                  disabled={isJoining || !globalSession}
                   className="w-full mt-4"
                 >
                   {isJoining ? "참여 중..." : "모임 참여하기"}
                 </Button>
+                {!globalSession && (
+                  <p className="mt-2 text-xs text-muted-foreground text-center">
+                    로그인 후 모임에 참여할 수 있습니다.
+                  </p>
+                )}
               </TabsContent>
             </Tabs>
 
@@ -284,6 +423,60 @@ export default function HomePage() {
             )}
           </CardContent>
         </Card>
+
+        {globalSession && (
+          <Card className="mt-4">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2 text-sm">
+                <DoorOpen className="h-4 w-4" />
+                내 모임
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              {isLoadingJoinedRooms ? (
+                <p className="text-xs text-muted-foreground">불러오는 중...</p>
+              ) : joinedRooms.length === 0 ? (
+                <p className="text-xs text-muted-foreground">
+                  아직 참여한 모임이 없습니다.
+                </p>
+              ) : (
+                <ul className="space-y-2 text-sm">
+                  {joinedRooms.map((room) => (
+                    <li
+                      key={room.id}
+                      className="flex items-center justify-between gap-2"
+                    >
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-2">
+                          <span className="font-medium truncate">
+                            {room.name}
+                          </span>
+                          {room.isHost && (
+                            <Badge variant="outline" className="text-[10px] px-1.5 py-0">
+                              방장
+                            </Badge>
+                          )}
+                        </div>
+                        <p className="text-[11px] text-muted-foreground">
+                          코드: {room.code}
+                        </p>
+                      </div>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="h-8 px-3 text-xs gap-1"
+                        onClick={() => router.push(`/room/${room.code}`)}
+                      >
+                        <DoorOpen className="h-3 w-3" />
+                        입장
+                      </Button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </CardContent>
+          </Card>
+        )}
 
         <div className="mt-6 flex items-center justify-center gap-6 text-sm text-muted-foreground">
           {roomCount !== null && (
@@ -303,16 +496,25 @@ export default function HomePage() {
         </div>
       </div>
 
-      {/* Auth Modal for Room Creation */}
+      {/* Auth Modal */}
       <Dialog open={showAuthModal} onOpenChange={(open) => !open && resetAuthModal()}>
         <DialogContent>
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
-              <UserPlus className="h-5 w-5" />
-              방장 계정 생성
+              {authMode === "signup" ? (
+                <>
+                  <UserPlus className="h-5 w-5" />
+                  회원가입
+                </>
+              ) : (
+                <>
+                  <LogIn className="h-5 w-5" />
+                  로그인
+                </>
+              )}
             </DialogTitle>
             <DialogDescription>
-              모임 생성을 위해 계정을 만들어주세요. 방장 권한이 부여됩니다.
+              이름과 비밀번호로 간단히 계정을 만들어 여러 모임에 참여할 수 있습니다.
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4 pt-4">
@@ -336,17 +538,19 @@ export default function HomePage() {
                   onChange={(e) => setAuthPassword(e.target.value)}
                 />
               </Field>
-              <Field>
-                <FieldLabel htmlFor="authConfirmPassword">비밀번호 확인</FieldLabel>
-                <Input
-                  id="authConfirmPassword"
-                  type="password"
-                  placeholder="비밀번호 재입력"
-                  value={authConfirmPassword}
-                  onChange={(e) => setAuthConfirmPassword(e.target.value)}
-                  onKeyDown={(e) => e.key === "Enter" && handleAuthSubmit()}
-                />
-              </Field>
+              {authMode === "signup" && (
+                <Field>
+                  <FieldLabel htmlFor="authConfirmPassword">비밀번호 확인</FieldLabel>
+                  <Input
+                    id="authConfirmPassword"
+                    type="password"
+                    placeholder="비밀번호 재입력"
+                    value={authConfirmPassword}
+                    onChange={(e) => setAuthConfirmPassword(e.target.value)}
+                    onKeyDown={(e) => e.key === "Enter" && handleAuthSubmit()}
+                  />
+                </Field>
+              )}
             </FieldGroup>
             {authError && (
               <p className="text-destructive text-sm">{authError}</p>
@@ -356,8 +560,24 @@ export default function HomePage() {
               disabled={isAuthSubmitting}
               className="w-full"
             >
-              {isAuthSubmitting ? "처리 중..." : "계정 생성 및 모임 입장"}
+              {isAuthSubmitting
+                ? "처리 중..."
+                : authMode === "signup"
+                  ? "회원가입"
+                  : "로그인"}
             </Button>
+            <p className="text-[11px] text-muted-foreground">
+              이미 계정이 있으신가요?{" "}
+              <button
+                type="button"
+                className="underline underline-offset-2"
+                onClick={() =>
+                  setAuthMode((prev) => (prev === "signup" ? "login" : "signup"))
+                }
+              >
+                {authMode === "signup" ? "로그인하기" : "회원가입하기"}
+              </button>
+            </p>
           </div>
         </DialogContent>
       </Dialog>

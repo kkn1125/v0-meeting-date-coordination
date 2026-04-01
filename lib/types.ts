@@ -36,3 +36,8 @@ export interface SessionPayload {
   isHost: boolean
   expiresAt: number
 }
+
+export interface GlobalSessionPayload {
+  name: string
+  expiresAt: number
+}
