@@ -30,10 +30,34 @@ export function ParticipantForm({ roomId, onParticipantCreated }: ParticipantFor
 
     try {
       const supabase = createClient()
+      const trimmedName = name.trim()
 
+      // Check if participant with same name already exists in this room
+      const { data: existingParticipant, error: selectError } = await supabase
+        .from("participants")
+        .select(`
+          *,
+          date_ranges (*)
+        `)
+        .eq("room_id", roomId)
+        .eq("name", trimmedName)
+        .single()
+
+      if (selectError && selectError.code !== "PGRST116") {
+        // PGRST116 = no rows returned, which is expected if participant doesn't exist
+        throw selectError
+      }
+
+      if (existingParticipant) {
+        // Use existing participant
+        onParticipantCreated(existingParticipant)
+        return
+      }
+
+      // Create new participant if not found
       const { data, error: insertError } = await supabase
         .from("participants")
-        .insert({ room_id: roomId, name: name.trim() })
+        .insert({ room_id: roomId, name: trimmedName })
         .select(`
           *,
           date_ranges (*)
