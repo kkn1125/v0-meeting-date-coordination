@@ -3,38 +3,29 @@ import { createClient } from "@/lib/supabase/server"
 
 export async function POST(request: NextRequest) {
   try {
-    const { participantId, action } = await request.json()
+    const { roomId, participantId, action } = await request.json()
 
-    if (!participantId) {
+    if (!roomId || !participantId) {
       return NextResponse.json(
-        { error: "참여자 ID가 필요합니다." },
+        { error: "roomId와 참여자 ID가 필요합니다." },
         { status: 400 }
       )
     }
 
     const supabase = await createClient()
 
-    if (action === "restore") {
-      // Restore participant
-      const { error } = await supabase
-        .from("participants")
-        .update({ deleted_at: null })
-        .eq("id", participantId)
+    // room_participants 기준으로 활성/비활성 토글
+    const isActive = action === "restore"
 
-      if (error) throw error
+    const { error } = await supabase
+      .from("room_participants")
+      .update({ is_active: isActive })
+      .eq("room_id", roomId)
+      .eq("participant_id", participantId)
 
-      return NextResponse.json({ success: true, action: "restored" })
-    } else {
-      // Kick participant (soft delete)
-      const { error } = await supabase
-        .from("participants")
-        .update({ deleted_at: new Date().toISOString() })
-        .eq("id", participantId)
+    if (error) throw error
 
-      if (error) throw error
-
-      return NextResponse.json({ success: true, action: "kicked" })
-    }
+    return NextResponse.json({ success: true, action: isActive ? "restored" : "kicked" })
   } catch (error) {
     console.error("Kick/Restore error:", error)
     return NextResponse.json(
@@ -43,3 +34,4 @@ export async function POST(request: NextRequest) {
     )
   }
 }
+

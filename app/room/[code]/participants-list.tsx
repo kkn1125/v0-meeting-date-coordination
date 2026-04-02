@@ -6,20 +6,36 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Users, Check, X, Undo2, Ban } from "lucide-react"
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog"
 
 interface ParticipantsListProps extends React.HTMLAttributes<HTMLDivElement> {
   participants: ParticipantWithDateRanges[]
+  roomId: string
   currentParticipantId?: string
   currentParticipantIsHost?: boolean
+  onParticipantsChange?: () => void | Promise<void>
 }
 
 export function ParticipantsList({
   participants,
+  roomId,
   currentParticipantId,
   currentParticipantIsHost,
+  onParticipantsChange,
   ...rest
 }: ParticipantsListProps) {
   const [isActionLoadingId, setIsActionLoadingId] = useState<string | null>(null)
+  const [confirmTarget, setConfirmTarget] = useState<ParticipantWithDateRanges | null>(null)
+  const [confirmMode, setConfirmMode] = useState<"kick" | "restore" | null>(null)
 
   const getAvailableDaysCount = (participant: ParticipantWithDateRanges) => {
     return participant.date_ranges.filter((r) => r.is_available).length
@@ -29,27 +45,51 @@ export function ParticipantsList({
     return participant.date_ranges.filter((r) => !r.is_available).length
   }
 
-  const handleKickOrRestore = async (participant: ParticipantWithDateRanges) => {
+  const runKickOrRestore = async (participant: ParticipantWithDateRanges) => {
     setIsActionLoadingId(participant.id)
     try {
-      const res = await fetch("/api/participants/kick", {
+      const endpoint = participant.deleted_at ? "/api/participants/restore" : "/api/participants/kick"
+
+      const res = await fetch(endpoint, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           participantId: participant.id,
-          action: participant.deleted_at ? "restore" : "kick",
+          roomId,
         }),
       })
 
       if (!res.ok) {
         const data = await res.json()
         console.error(data.error || "작업에 실패했습니다.")
+        return
+      }
+
+      // 성공 시 최신 목록 다시 불러오기
+      if (onParticipantsChange) {
+        await onParticipantsChange()
       }
     } catch (error) {
       console.error(error)
     } finally {
       setIsActionLoadingId(null)
     }
+  }
+
+  const handleKickOrRestoreClick = (participant: ParticipantWithDateRanges) => {
+    if (participant.deleted_at) {
+      setConfirmMode("restore")
+    } else {
+      setConfirmMode("kick")
+    }
+    setConfirmTarget(participant)
+  }
+
+  const handleConfirm = async () => {
+    if (!confirmTarget) return
+    await runKickOrRestore(confirmTarget)
+    setConfirmTarget(null)
+    setConfirmMode(null)
   }
 
   const visibleParticipants = participants
@@ -121,7 +161,7 @@ export function ParticipantsList({
                     {isKicked && (
                       <Badge variant="destructive" className="text-[10px] px-1.5 py-0 flex items-center gap-1">
                         <Ban className="h-3 w-3" />
-                        강퇴됨
+                        비활성화 됨
                       </Badge>
                     )}
                   </div>
@@ -149,7 +189,7 @@ export function ParticipantsList({
                         variant="ghost"
                         size="icon"
                         className="h-7 w-7"
-                        onClick={() => handleKickOrRestore(participant)}
+                        onClick={() => handleKickOrRestoreClick(participant)}
                         disabled={isActionLoadingId === participant.id}
                       >
                         {participant.deleted_at ? (
@@ -170,6 +210,40 @@ export function ParticipantsList({
           })}
         </ul>
       </CardContent>
+
+      <AlertDialog
+        open={!!confirmTarget}
+        onOpenChange={(open) => {
+          if (!open) {
+            setConfirmTarget(null)
+            setConfirmMode(null)
+          }
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              {confirmMode === "restore" ? "복구하시겠습니까?" : "비활성하시겠습니까?"}
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              {confirmMode === "restore"
+                ? "선택한 참여자를 다시 활성화합니다."
+                : "선택한 참여자를 이 모임에서 비활성화합니다."}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel
+              onClick={() => {
+                setConfirmTarget(null)
+                setConfirmMode(null)
+              }}
+            >
+              취소
+            </AlertDialogCancel>
+            <AlertDialogAction onClick={handleConfirm}>확인</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </Card>
   )
 }

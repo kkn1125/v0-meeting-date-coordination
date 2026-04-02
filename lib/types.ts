@@ -19,6 +19,7 @@ export interface Participant {
 export interface DateRange {
   id: string
   participant_id: string
+  room_id: string
   start_date: string
   end_date: string
   is_available: boolean
