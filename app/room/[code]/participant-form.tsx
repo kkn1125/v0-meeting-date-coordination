@@ -32,41 +32,86 @@ export function ParticipantForm({ roomId, onParticipantCreated }: ParticipantFor
       const supabase = createClient()
       const trimmedName = name.trim()
 
-      // Check if participant with same name already exists in this room
-      const { data: existingParticipant, error: selectError } = await supabase
+      // 1) 글로벌 참가자(사용자) 조회 또는 생성
+      const { data: existingUser, error: existingUserError } = await supabase
         .from("participants")
-        .select(`
-          *,
-          date_ranges (*)
-        `)
-        .eq("room_id", roomId)
+        .select("id,name,password_hash,created_at")
         .eq("name", trimmedName)
+        .limit(1)
         .single()
 
-      if (selectError && selectError.code !== "PGRST116") {
-        // PGRST116 = no rows returned, which is expected if participant doesn't exist
-        throw selectError
+      let participantId: string | null = existingUser?.id ?? null
+
+      if (existingUserError && existingUserError.code !== "PGRST116") {
+        throw existingUserError
       }
 
-      if (existingParticipant) {
-        // Use existing participant
-        onParticipantCreated(existingParticipant)
-        return
+      if (!participantId) {
+        const { data: newUser, error: insertUserError } = await supabase
+          .from("participants")
+          .insert({ name: trimmedName })
+          .select("id,name,password_hash,created_at")
+          .single()
+
+        if (insertUserError || !newUser) {
+          throw insertUserError
+        }
+
+        participantId = newUser.id
       }
 
-      // Create new participant if not found
-      const { data, error: insertError } = await supabase
-        .from("participants")
-        .insert({ room_id: roomId, name: trimmedName })
-        .select(`
-          *,
-          date_ranges (*)
-        `)
+      // 2) room_participants 링크 생성 또는 조회
+      const { data: existingLink, error: linkError } = await supabase
+        .from("room_participants")
+        .select("id,is_host,is_active")
+        .eq("room_id", roomId)
+        .eq("participant_id", participantId)
+        .limit(1)
         .single()
 
-      if (insertError) throw insertError
+      if (linkError && linkError.code !== "PGRST116") {
+        throw linkError
+      }
 
-      onParticipantCreated(data)
+      if (!existingLink) {
+        const { error: insertLinkError } = await supabase
+          .from("room_participants")
+          .insert({
+            room_id: roomId,
+            participant_id: participantId,
+            is_host: false,
+            is_active: true,
+          })
+
+        if (insertLinkError) throw insertLinkError
+      } else if (!existingLink.is_active) {
+        // 비활성 상태였다면 다시 활성화
+        const { error: restoreError } = await supabase
+          .from("room_participants")
+          .update({ is_active: true })
+          .eq("room_id", roomId)
+          .eq("participant_id", participantId)
+
+        if (restoreError) throw restoreError
+      }
+
+      // 3) 이 방에서 사용할 ParticipantWithDateRanges 형태 구성 (date_ranges 는 빈 배열로 시작)
+      if (!participantId) {
+        throw new Error("participantId is missing after upsert")
+      }
+
+      const participant: ParticipantWithDateRanges = {
+        id: participantId,
+        room_id: roomId,
+        name: trimmedName,
+        password_hash: existingUser?.password_hash ?? null,
+        is_host: false,
+        deleted_at: null,
+        created_at: existingUser?.created_at ?? new Date().toISOString(),
+        date_ranges: [],
+      }
+
+      onParticipantCreated(participant)
     } catch (err) {
       console.error(err)
       setError("참여에 실패했습니다. 다시 시도해주세요.")
