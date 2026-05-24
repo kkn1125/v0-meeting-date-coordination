@@ -3,13 +3,21 @@
 .next
 node_modules
 npm-debug.log*
-.env*.local
+.yarn
+.pnpm-store
+
+# 비밀·로컬 설정은 이미지 레이어에 넣지 않음 (런타임은 compose env_file)
+.env
+.env.*
+!.env.example
+
 .v0-trash
 .snowflake
 .vercel
 __v0_*
+coverage
 *.md
 !README.md
-Dockerfile
-docker-compose*.yml
 deploy
+docker-compose*.yml
+Dockerfile*
