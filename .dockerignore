@@ -1,0 +1,15 @@
+.git
+.github
+.next
+node_modules
+npm-debug.log*
+.env*.local
+.v0-trash
+.snowflake
+.vercel
+__v0_*
+*.md
+!README.md
+Dockerfile
+docker-compose*.yml
+deploy
