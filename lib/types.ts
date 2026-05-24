@@ -16,6 +16,18 @@ export interface Participant {
   created_at: string
 }
 
+export interface RoomLabel {
+  id: string
+  room_id: string
+  name: string
+  is_valid: boolean
+  created_by_participant_id: string
+  created_at: string
+  updated_at: string
+  created_by_name?: string
+  date_range_count?: number
+}
+
 export interface DateRange {
   id: string
   participant_id: string
@@ -23,6 +35,7 @@ export interface DateRange {
   start_date: string
   end_date: string
   is_available: boolean
+  label_id: string | null
   created_at: string
 }
 
@@ -87,5 +100,7 @@ export interface RangeSpan {
   startDate: string
   endDate: string
   isAvailable: boolean
+  labelId: string | null
+  labelIsValid: boolean | null
   dateRange: DateRange
 }

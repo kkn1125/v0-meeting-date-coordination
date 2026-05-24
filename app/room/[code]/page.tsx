@@ -1,7 +1,7 @@
 import { notFound } from "next/navigation";
 import { RoomClient } from "./room-client";
 import type { Metadata } from "next";
-import { getRoomByCode, getRoomParticipantsWithDateRanges, getMemosByRoom } from "@/lib/db/queries";
+import { getRoomByCode, getRoomParticipantsWithDateRanges, getMemosByRoom, getRoomLabels } from "@/lib/db/queries";
 
 import { Suspense } from "react";
 
@@ -28,6 +28,7 @@ export default async function RoomPage({ params }: Props) {
 
   const initialParticipants = await getRoomParticipantsWithDateRanges(room.id);
   const initialMemos = await getMemosByRoom(room.id);
+  const initialLabels = await getRoomLabels(room.id);
 
   return (
     <Suspense fallback={null}>
@@ -35,6 +36,7 @@ export default async function RoomPage({ params }: Props) {
         room={room}
         initialParticipants={initialParticipants}
         initialMemos={initialMemos}
+        initialLabels={initialLabels}
       />
     </Suspense>
   );

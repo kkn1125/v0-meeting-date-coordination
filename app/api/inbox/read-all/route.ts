@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
 import { markAllInboxRead } from "@/lib/db/queries"
-import { broadcastInbox } from "@/lib/socket/broadcast"
+import { notifyInboxUpdated } from "@/lib/socket/notify-relay"
 
 export async function PATCH(request: NextRequest) {
   try {
@@ -10,7 +10,7 @@ export async function PATCH(request: NextRequest) {
     }
 
     await markAllInboxRead(participantId)
-    await broadcastInbox(participantId)
+    await notifyInboxUpdated([participantId], request)
 
     return NextResponse.json({ success: true })
   } catch (error) {

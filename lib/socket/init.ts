@@ -3,6 +3,7 @@ import { Server as SocketIOServer } from "socket.io"
 import {
   getInboxUnreadCount,
   getMemosByRoom,
+  getRoomLabels,
   getRoomParticipantsWithDateRanges,
 } from "@/lib/db/queries"
 import { SOCKET_IO_PATH } from "@/lib/socket/constants"
@@ -34,6 +35,9 @@ export function attachSocketIO(httpServer: HTTPServer): SocketIOServer {
 
         const memos = await getMemosByRoom(roomId)
         socket.emit(SOCKET_EVENTS.MEMOS_UPDATED, { memos })
+
+        const labels = await getRoomLabels(roomId)
+        socket.emit(SOCKET_EVENTS.LABELS_UPDATED, { labels })
       } catch (error) {
         console.error("Failed to send room snapshot:", error)
       }
@@ -46,7 +50,10 @@ export function attachSocketIO(httpServer: HTTPServer): SocketIOServer {
 
       try {
         const unreadCount = await getInboxUnreadCount(participantId)
-        socket.emit(SOCKET_EVENTS.INBOX_UPDATED, { unreadCount })
+        socket.emit(SOCKET_EVENTS.INBOX_UPDATED, {
+          unreadCount,
+          participantId,
+        })
       } catch (error) {
         console.error("Failed to send inbox snapshot:", error)
       }

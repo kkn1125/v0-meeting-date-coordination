@@ -13,6 +13,7 @@ import {
 } from "@/components/ui/popover"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { getGlobalSessionFromStorage } from "@/lib/auth"
+import { INBOX_REFRESH_EVENT } from "@/lib/inbox-events"
 import type { InboxNotification } from "@/lib/types"
 import { useInboxSocket } from "@/hooks/use-inbox-socket"
 import { cn } from "@/lib/utils"
@@ -54,10 +55,15 @@ export function NotificationBell() {
     void loadInbox()
   }, [loadInbox])
 
-  useInboxSocket(participantId, (count) => {
-    setUnreadCount(count)
-    void loadInbox()
-  })
+  useEffect(() => {
+    const handleRefresh = () => {
+      void loadInbox()
+    }
+    window.addEventListener(INBOX_REFRESH_EVENT, handleRefresh)
+    return () => window.removeEventListener(INBOX_REFRESH_EVENT, handleRefresh)
+  }, [loadInbox])
+
+  useInboxSocket(participantId, loadInbox)
 
   if (!sessionName) return null
 

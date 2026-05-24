@@ -14,10 +14,13 @@ async function ensureSocketServer() {
 
 export function useInboxSocket(
   participantId: string | null,
-  onInboxUpdated: (unreadCount: number) => void
+  onInboxUpdated: () => void
 ) {
   const callbackRef = useRef(onInboxUpdated)
   callbackRef.current = onInboxUpdated
+
+  const participantIdRef = useRef(participantId)
+  participantIdRef.current = participantId
 
   useEffect(() => {
     if (!participantId) return
@@ -35,19 +38,24 @@ export function useInboxSocket(
           addTrailingSlash: false,
         })
 
-        const handleConnect = () => {
-          socket?.emit(SOCKET_EVENTS.JOIN_PARTICIPANT, participantId)
+        const joinParticipant = () => {
+          const pid = participantIdRef.current
+          if (pid) socket?.emit(SOCKET_EVENTS.JOIN_PARTICIPANT, pid)
         }
 
-        const handleInboxUpdated = (data: { unreadCount: number }) => {
-          callbackRef.current(data.unreadCount)
+        const handleInboxUpdated = (data: {
+          unreadCount: number
+          participantId: string
+        }) => {
+          if (data.participantId !== participantIdRef.current) return
+          callbackRef.current()
         }
 
-        socket.on("connect", handleConnect)
+        socket.on("connect", joinParticipant)
         socket.on(SOCKET_EVENTS.INBOX_UPDATED, handleInboxUpdated)
 
         if (socket.connected) {
-          handleConnect()
+          joinParticipant()
         }
       } catch (error) {
         console.error("Inbox socket connection error:", error)

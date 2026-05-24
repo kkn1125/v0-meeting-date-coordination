@@ -41,6 +41,19 @@ CREATE INDEX IF NOT EXISTS idx_room_participants_participant_id
 CREATE INDEX IF NOT EXISTS idx_room_participants_room_active
   ON room_participants (room_id, is_active);
 
+-- 방 라벨 테이블
+CREATE TABLE IF NOT EXISTS room_labels (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  room_id uuid NOT NULL REFERENCES rooms (id) ON DELETE CASCADE,
+  name text NOT NULL,
+  is_valid boolean NOT NULL DEFAULT true,
+  created_by_participant_id uuid NOT NULL REFERENCES participants (id) ON DELETE CASCADE,
+  created_at timestamptz NOT NULL DEFAULT NOW(),
+  updated_at timestamptz NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_room_labels_room_id ON room_labels (room_id);
+
 -- 날짜 범위 테이블
 CREATE TABLE IF NOT EXISTS date_ranges (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -49,6 +62,7 @@ CREATE TABLE IF NOT EXISTS date_ranges (
   start_date date NOT NULL,
   end_date date NOT NULL,
   is_available boolean NOT NULL DEFAULT true,
+  label_id uuid REFERENCES room_labels (id) ON DELETE SET NULL,
   created_at timestamptz DEFAULT NOW()
 );
 
@@ -57,6 +71,8 @@ CREATE INDEX IF NOT EXISTS idx_date_ranges_room_id
 
 CREATE INDEX IF NOT EXISTS idx_date_ranges_room_participant
   ON date_ranges (room_id, participant_id);
+
+CREATE INDEX IF NOT EXISTS idx_date_ranges_label_id ON date_ranges (label_id);
 
 -- memos: 방 격리, date_range 단위, 기간당 여러 메모(스레드)
 CREATE TABLE IF NOT EXISTS memos (

@@ -2,14 +2,11 @@ import { NextRequest, NextResponse } from "next/server"
 import {
   deleteMemo,
   getActiveRoomParticipantIds,
-  getMemosByRoom,
+  mergeInboxRecipientIds,
   updateMemo,
   verifyRoomMembership,
 } from "@/lib/db/queries"
-import {
-  broadcastInboxMany,
-  broadcastRoomMemos,
-} from "@/lib/socket/broadcast"
+import { notifyRoomMemosUpdated } from "@/lib/socket/notify-relay"
 
 export async function PATCH(
   request: NextRequest,
@@ -46,8 +43,12 @@ export async function PATCH(
       return NextResponse.json({ error: "메모를 찾을 수 없습니다." }, { status: 404 })
     }
 
-    await broadcastRoomMemos(roomId, memo.date_range_id)
-    await broadcastInboxMany(affectedRecipientIds)
+    const inboxRecipients = mergeInboxRecipientIds(
+      affectedRecipientIds,
+      mentions,
+      [authorParticipantId]
+    )
+    await notifyRoomMemosUpdated(roomId, inboxRecipients)
 
     return NextResponse.json({ memo })
   } catch (error) {
@@ -71,9 +72,6 @@ export async function DELETE(
       return NextResponse.json({ error: "필수 필드가 누락되었습니다." }, { status: 400 })
     }
 
-    const existingMemos = await getMemosByRoom(roomId)
-    const existing = existingMemos.find((m) => m.id === memoId)
-
     const { deleted, affectedRecipientIds } = await deleteMemo({
       roomId,
       memoId,
@@ -84,8 +82,11 @@ export async function DELETE(
       return NextResponse.json({ error: "메모를 찾을 수 없습니다." }, { status: 404 })
     }
 
-    await broadcastRoomMemos(roomId, existing?.date_range_id)
-    await broadcastInboxMany(affectedRecipientIds)
+    const inboxRecipients = mergeInboxRecipientIds(
+      affectedRecipientIds,
+      [participantId]
+    )
+    await notifyRoomMemosUpdated(roomId, inboxRecipients)
 
     return NextResponse.json({ success: true })
   } catch (error) {

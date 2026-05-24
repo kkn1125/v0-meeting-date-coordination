@@ -1,13 +1,29 @@
 import { eachDayOfInterval, format, parseISO } from "date-fns"
-import type { DateRange, ParticipantWithDateRanges, RangeSpan } from "@/lib/types"
+import type {
+  DateRange,
+  ParticipantWithDateRanges,
+  RangeSpan,
+  RoomLabel,
+} from "@/lib/types"
 
 export interface RangeSpanWithKeys extends RangeSpan {
   dateKeys: Set<string>
 }
 
+function resolveLabelValidity(
+  range: DateRange,
+  labelsById: Map<string, RoomLabel>
+): boolean | null {
+  if (!range.label_id) return null
+  const label = labelsById.get(range.label_id)
+  return label ? label.is_valid : false
+}
+
 export function buildRangeSpans(
-  participants: ParticipantWithDateRanges[]
+  participants: ParticipantWithDateRanges[],
+  labels: RoomLabel[] = []
 ): RangeSpanWithKeys[] {
+  const labelsById = new Map(labels.map((l) => [l.id, l]))
   const spans: RangeSpanWithKeys[] = []
 
   participants
@@ -27,6 +43,8 @@ export function buildRangeSpans(
           startDate: range.start_date,
           endDate: range.end_date,
           isAvailable: range.is_available,
+          labelId: range.label_id,
+          labelIsValid: resolveLabelValidity(range, labelsById),
           dateRange: range,
           dateKeys,
         })

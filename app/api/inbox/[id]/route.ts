@@ -3,7 +3,7 @@ import {
   deleteInboxNotification,
   toggleInboxRead,
 } from "@/lib/db/queries"
-import { broadcastInbox } from "@/lib/socket/broadcast"
+import { notifyInboxUpdated } from "@/lib/socket/notify-relay"
 
 export async function PATCH(
   request: NextRequest,
@@ -22,7 +22,7 @@ export async function PATCH(
       return NextResponse.json({ error: "알림을 찾을 수 없습니다." }, { status: 404 })
     }
 
-    await broadcastInbox(participantId)
+    await notifyInboxUpdated([participantId], request)
     return NextResponse.json({ success: true })
   } catch (error) {
     console.error("Toggle inbox read error:", error)
@@ -47,7 +47,7 @@ export async function DELETE(
       return NextResponse.json({ error: "알림을 찾을 수 없습니다." }, { status: 404 })
     }
 
-    await broadcastInbox(participantId)
+    await notifyInboxUpdated([participantId], request)
     return NextResponse.json({ success: true })
   } catch (error) {
     console.error("Delete inbox error:", error)

@@ -10,28 +10,39 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import type { ParticipantWithDateRanges } from "@/lib/types";
+import type { ParticipantWithDateRanges, RoomLabel } from "@/lib/types";
+import { LabelSelectField } from "./label-select-field";
 import { cn } from "@/lib/utils";
 import { eachDayOfInterval, format, isSameDay, parseISO } from "date-fns";
 import { ko } from "date-fns/locale";
 import { CalendarPlus, Check, Trash2, X } from "lucide-react";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import type { DateRange as DayPickerDateRange } from "react-day-picker";
 
 interface DateInputFormProps {
   participant: ParticipantWithDateRanges;
+  labels: RoomLabel[];
+  roomId: string;
   onDateRangeAdded?: () => void;
 }
 
 export function DateInputForm({
   participant,
+  labels,
+  roomId,
   onDateRangeAdded,
 }: DateInputFormProps) {
   const [selectedRange, setSelectedRange] = useState<
     DayPickerDateRange | undefined
   >();
   const [isAvailable, setIsAvailable] = useState(true);
+  const [selectedLabelId, setSelectedLabelId] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  const labelsById = useMemo(
+    () => new Map(labels.map((l) => [l.id, l])),
+    [labels]
+  );
 
   const handleSubmit = async () => {
     if (!selectedRange?.from) return;
@@ -49,16 +60,18 @@ export function DateInputForm({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           participantId: participant.id,
-          roomId: participant.room_id,
+          roomId,
           startDate,
           endDate,
           isAvailable,
+          labelId: selectedLabelId,
         }),
       });
 
       if (!res.ok) throw new Error("Failed to save date range");
 
       setSelectedRange(undefined);
+      setSelectedLabelId(null);
       onDateRangeAdded?.();
     } catch (err) {
       console.error(err);
@@ -83,23 +96,32 @@ export function DateInputForm({
     const availableDates: Date[] = [];
     const unavailableDates: Date[] = [];
 
+    const invalidLabelDates: Date[] = [];
+
     participant.date_ranges.forEach((range) => {
       const dates = eachDayOfInterval({
         start: parseISO(range.start_date),
         end: parseISO(range.end_date),
       });
 
-      if (range.is_available) {
+      const label = range.label_id ? labelsById.get(range.label_id) : null;
+      const hasInvalidLabel =
+        range.label_id && (!label || !label.is_valid);
+
+      if (hasInvalidLabel) {
+        invalidLabelDates.push(...dates);
+      } else if (range.is_available) {
         availableDates.push(...dates);
       } else {
         unavailableDates.push(...dates);
       }
     });
 
-    return { availableDates, unavailableDates };
+    return { availableDates, unavailableDates, invalidLabelDates };
   };
 
-  const { availableDates, unavailableDates } = getExistingDates();
+  const { availableDates, unavailableDates, invalidLabelDates } =
+    getExistingDates();
 
   const getSelectedRangeDates = () => {
     if (!selectedRange?.from) return [];
@@ -182,6 +204,7 @@ export function DateInputForm({
             modifiers={{
               available: availableDates,
               unavailable: unavailableDates,
+              invalidLabel: invalidLabelDates,
               selectionPreview: selectedRangeDates,
             }}
             modifiersClassNames={{
@@ -189,6 +212,8 @@ export function DateInputForm({
                 "bg-available/30 text-foreground font-medium rounded-md",
               unavailable:
                 "bg-unavailable/30 text-unavailable-foreground font-medium rounded-md",
+              invalidLabel:
+                "bg-zinc-200/70 dark:bg-zinc-600/40 text-muted-foreground font-medium rounded-md",
               selectionPreview: isAvailable
                 ? "ring-2 ring-inset ring-available/70"
                 : "ring-2 ring-inset ring-unavailable/70",
@@ -235,6 +260,12 @@ export function DateInputForm({
           </div>
         )}
 
+        <LabelSelectField
+          labels={labels}
+          value={selectedLabelId}
+          onChange={setSelectedLabelId}
+        />
+
         <Button
           onClick={handleSubmit}
           disabled={!selectedRange?.from || isSubmitting}
@@ -249,22 +280,45 @@ export function DateInputForm({
               내가 입력한 날짜
             </p>
             <div className="space-y-2">
-              {participant.date_ranges.map((range) => (
+              {participant.date_ranges.map((range) => {
+                const label = range.label_id
+                  ? labelsById.get(range.label_id)
+                  : null;
+                const hasInvalidLabel =
+                  range.label_id && (!label || !label.is_valid);
+
+                return (
                 <div
                   key={range.id}
-                  className="flex items-center justify-between p-2 rounded-lg bg-muted/50"
+                  className={`flex items-center justify-between p-2 rounded-lg ${
+                    hasInvalidLabel ? "bg-zinc-100/80 dark:bg-zinc-800/50" : "bg-muted/50"
+                  }`}
                 >
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-2 flex-wrap">
                     <Badge
                       variant="secondary"
                       className={
-                        range.is_available
+                        hasInvalidLabel
+                          ? "bg-zinc-200/80 text-muted-foreground border border-zinc-300"
+                          : range.is_available
                           ? "bg-available/20 text-foreground border border-available/40"
                           : "bg-unavailable/20 text-unavailable-foreground border border-unavailable/40"
                       }
                     >
                       {range.is_available ? "가능" : "불가능"}
                     </Badge>
+                    {label && (
+                      <Badge
+                        variant="outline"
+                        className={
+                          hasInvalidLabel
+                            ? "text-muted-foreground border-zinc-300"
+                            : ""
+                        }
+                      >
+                        {label.name}
+                      </Badge>
+                    )}
                     <span className="text-sm">
                       {format(parseISO(range.start_date), "M/d", {
                         locale: ko,
@@ -290,7 +344,8 @@ export function DateInputForm({
                     <span className="sr-only">삭제</span>
                   </Button>
                 </div>
-              ))}
+              );
+              })}
             </div>
           </div>
         )}

@@ -2,8 +2,9 @@
 
 import { useEffect, useState, useCallback, useMemo } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
-import type { Room, ParticipantWithDateRanges, Memo } from "@/lib/types"
+import type { Room, ParticipantWithDateRanges, Memo, RoomLabel } from "@/lib/types"
 import { getSessionFromStorage, getGlobalSessionFromStorage, clearSessionFromStorage } from "@/lib/auth"
+import { requestInboxRefresh } from "@/lib/inbox-events"
 import { useRoomSocket } from "@/hooks/use-room-socket"
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
@@ -22,20 +23,24 @@ import { RoomHeader } from "./room-header"
 import { ParticipantsList } from "./participants-list"
 import { AvailabilityCalendar } from "./availability-calendar"
 import { DateInputForm } from "./date-input-form"
+import { RoomLabelsPanel } from "./room-labels-panel"
 
 interface RoomClientProps {
   room: Room
   initialParticipants: ParticipantWithDateRanges[]
   initialMemos?: Memo[]
+  initialLabels?: RoomLabel[]
 }
 
 export function RoomClient({
   room,
   initialParticipants,
   initialMemos = [],
+  initialLabels = [],
 }: RoomClientProps) {
   const [participants, setParticipants] = useState<ParticipantWithDateRanges[]>(initialParticipants)
   const [memos, setMemos] = useState<Memo[]>(initialMemos)
+  const [labels, setLabels] = useState<RoomLabel[]>(initialLabels)
   const [currentParticipant, setCurrentParticipant] = useState<ParticipantWithDateRanges | null>(null)
   const [isMembershipInactive, setIsMembershipInactive] = useState(false)
   const [isLoginRequired, setIsLoginRequired] = useState(false)
@@ -56,19 +61,22 @@ export function RoomClient({
     []
   )
 
-  const applyMemosUpdate = useCallback((updatedMemos: Memo[], dateRangeId?: string) => {
-    if (dateRangeId) {
-      setMemos((prev) => {
-        const others = prev.filter((m) => m.date_range_id !== dateRangeId)
-        const filtered = updatedMemos.filter((m) => m.date_range_id === dateRangeId)
-        return [...others, ...filtered]
-      })
-    } else {
-      setMemos(updatedMemos)
-    }
+  const applyMemosUpdate = useCallback((updatedMemos: Memo[]) => {
+    setMemos(updatedMemos)
   }, [])
 
-  useRoomSocket(room.id, applyParticipantsUpdate, applyMemosUpdate)
+  const applyLabelsUpdate = useCallback((updatedLabels: RoomLabel[]) => {
+    setLabels(updatedLabels)
+  }, [])
+
+  useRoomSocket(
+    room.id,
+    currentParticipant?.id,
+    applyParticipantsUpdate,
+    applyMemosUpdate,
+    requestInboxRefresh,
+    applyLabelsUpdate
+  )
 
   useEffect(() => {
     const loadMemos = async () => {
@@ -167,6 +175,7 @@ export function RoomClient({
               <AvailabilityCalendar
                 roomId={room.id}
                 participants={participants}
+                labels={labels}
                 memos={memos}
                 currentParticipantId={currentParticipant?.id}
                 currentParticipantIsHost={!!currentParticipant?.is_host}
@@ -227,7 +236,20 @@ export function RoomClient({
               </Card>
 
               {currentParticipant && (
-                <DateInputForm participant={currentParticipant} />
+                <>
+                  <RoomLabelsPanel
+                    roomId={room.id}
+                    labels={labels}
+                    currentParticipantId={currentParticipant.id}
+                    currentParticipantIsHost={currentParticipant.is_host}
+                    onLabelsChange={setLabels}
+                  />
+                  <DateInputForm
+                    participant={currentParticipant}
+                    labels={labels}
+                    roomId={room.id}
+                  />
+                </>
               )}
 
               <ParticipantsList

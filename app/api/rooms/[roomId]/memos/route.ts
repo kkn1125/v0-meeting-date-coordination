@@ -3,13 +3,11 @@ import {
   createMemo,
   getActiveRoomParticipantIds,
   getMemosByRoom,
+  mergeInboxRecipientIds,
   verifyDateRangeInRoom,
   verifyRoomMembership,
 } from "@/lib/db/queries"
-import {
-  broadcastInboxMany,
-  broadcastRoomMemos,
-} from "@/lib/socket/broadcast"
+import { notifyRoomMemosUpdated } from "@/lib/socket/notify-relay"
 
 export async function GET(
   request: NextRequest,
@@ -62,8 +60,12 @@ export async function POST(
       mentionParticipantIds: mentions,
     })
 
-    await broadcastRoomMemos(roomId, dateRangeId)
-    await broadcastInboxMany(memoResult.affectedRecipientIds)
+    const inboxRecipients = mergeInboxRecipientIds(
+      memoResult.affectedRecipientIds,
+      mentions,
+      [authorParticipantId]
+    )
+    await notifyRoomMemosUpdated(roomId, inboxRecipients)
 
     return NextResponse.json({ memo: memoResult.memo })
   } catch (error) {

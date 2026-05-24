@@ -5,7 +5,7 @@ import { io, type Socket } from "socket.io-client"
 import { SOCKET_BOOTSTRAP_PATH, SOCKET_IO_PATH } from "@/lib/socket/constants"
 import { toISODateString } from "@/lib/dates"
 import { SOCKET_EVENTS } from "@/lib/socket/events"
-import type { Memo, ParticipantWithDateRanges } from "@/lib/types"
+import type { Memo, ParticipantWithDateRanges, RoomLabel } from "@/lib/types"
 
 function normalizeParticipants(
   participants: ParticipantWithDateRanges[]
@@ -29,8 +29,11 @@ async function ensureSocketServer() {
 
 export function useRoomSocket(
   roomId: string,
+  participantId: string | undefined,
   onParticipantsUpdated: (participants: ParticipantWithDateRanges[]) => void,
-  onMemosUpdated?: (memos: Memo[], dateRangeId?: string) => void
+  onMemosUpdated?: (memos: Memo[]) => void,
+  onInboxRefresh?: () => void,
+  onLabelsUpdated?: (labels: RoomLabel[]) => void
 ) {
   const participantsCallbackRef = useRef(onParticipantsUpdated)
   participantsCallbackRef.current = onParticipantsUpdated
@@ -38,8 +41,18 @@ export function useRoomSocket(
   const memosCallbackRef = useRef(onMemosUpdated)
   memosCallbackRef.current = onMemosUpdated
 
+  const inboxRefreshRef = useRef(onInboxRefresh)
+  inboxRefreshRef.current = onInboxRefresh
+
+  const labelsCallbackRef = useRef(onLabelsUpdated)
+  labelsCallbackRef.current = onLabelsUpdated
+
+  const participantIdRef = useRef(participantId)
+  participantIdRef.current = participantId
+
+  const socketRef = useRef<Socket | null>(null)
+
   useEffect(() => {
-    let socket: Socket | null = null
     let cancelled = false
 
     const setup = async () => {
@@ -47,13 +60,18 @@ export function useRoomSocket(
         await ensureSocketServer()
         if (cancelled) return
 
-        socket = io({
+        const socket = io({
           path: SOCKET_IO_PATH,
           addTrailingSlash: false,
         })
+        socketRef.current = socket
 
-        const handleConnect = () => {
-          socket?.emit(SOCKET_EVENTS.JOIN_ROOM, roomId)
+        const joinRoom = () => {
+          socket.emit(SOCKET_EVENTS.JOIN_ROOM, roomId)
+          const pid = participantIdRef.current
+          if (pid) {
+            socket.emit(SOCKET_EVENTS.JOIN_PARTICIPANT, pid)
+          }
         }
 
         const handleParticipantsUpdated = (data: {
@@ -64,17 +82,37 @@ export function useRoomSocket(
 
         const handleMemosUpdated = (data: {
           memos: Memo[]
-          dateRangeId?: string
+          inboxRecipientIds?: string[]
         }) => {
-          memosCallbackRef.current?.(data.memos, data.dateRangeId)
+          memosCallbackRef.current?.(data.memos)
+          const pid = participantIdRef.current
+          if (pid && data.inboxRecipientIds?.includes(pid)) {
+            inboxRefreshRef.current?.()
+          }
         }
 
-        socket.on("connect", handleConnect)
+        const handleInboxUpdated = (data: {
+          unreadCount: number
+          participantId: string
+        }) => {
+          const pid = participantIdRef.current
+          if (pid && data.participantId === pid) {
+            inboxRefreshRef.current?.()
+          }
+        }
+
+        const handleLabelsUpdated = (data: { labels: RoomLabel[] }) => {
+          labelsCallbackRef.current?.(data.labels)
+        }
+
+        socket.on("connect", joinRoom)
         socket.on(SOCKET_EVENTS.PARTICIPANTS_UPDATED, handleParticipantsUpdated)
         socket.on(SOCKET_EVENTS.MEMOS_UPDATED, handleMemosUpdated)
+        socket.on(SOCKET_EVENTS.INBOX_UPDATED, handleInboxUpdated)
+        socket.on(SOCKET_EVENTS.LABELS_UPDATED, handleLabelsUpdated)
 
         if (socket.connected) {
-          handleConnect()
+          joinRoom()
         }
       } catch (error) {
         console.error("Socket connection error:", error)
@@ -85,12 +123,19 @@ export function useRoomSocket(
 
     return () => {
       cancelled = true
+      const socket = socketRef.current
       if (socket) {
-        socket.off("connect")
-        socket.off(SOCKET_EVENTS.PARTICIPANTS_UPDATED)
-        socket.off(SOCKET_EVENTS.MEMOS_UPDATED)
+        socket.removeAllListeners()
         socket.disconnect()
+        socketRef.current = null
       }
     }
   }, [roomId])
+
+  useEffect(() => {
+    const socket = socketRef.current
+    const pid = participantId
+    if (!socket?.connected || !pid) return
+    socket.emit(SOCKET_EVENTS.JOIN_PARTICIPANT, pid)
+  }, [participantId])
 }

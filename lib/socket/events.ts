@@ -3,6 +3,7 @@ export const SOCKET_EVENTS = {
   JOIN_PARTICIPANT: "participant:join",
   PARTICIPANTS_UPDATED: "room:participants-updated",
   MEMOS_UPDATED: "room:memos-updated",
+  LABELS_UPDATED: "room:labels-updated",
   INBOX_UPDATED: "participant:inbox-updated",
 } as const
 

@@ -22,7 +22,7 @@ import {
   buildRangesByDateKey,
   type RangeSpanWithKeys,
 } from "@/lib/calendar-ranges"
-import type { Memo, ParticipantWithDateRanges } from "@/lib/types"
+import type { Memo, ParticipantWithDateRanges, RoomLabel } from "@/lib/types"
 import {
   addMonths,
   eachDayOfInterval,
@@ -50,6 +50,7 @@ import { RangePickerPopover } from "./range-picker-popover"
 interface AvailabilityCalendarProps {
   roomId: string
   participants: ParticipantWithDateRanges[]
+  labels: RoomLabel[]
   memos: Memo[]
   currentParticipantId?: string
   currentParticipantIsHost?: boolean
@@ -68,6 +69,7 @@ interface DateAvailability {
 export function AvailabilityCalendar({
   roomId,
   participants,
+  labels,
   memos,
   currentParticipantId,
   currentParticipantIsHost = false,
@@ -91,7 +93,10 @@ export function AvailabilityCalendar({
   const [deepLinkHandled, setDeepLinkHandled] = useState(false)
   const cellRefs = useRef<Map<string, HTMLDivElement>>(new Map())
 
-  const rangeSpans = useMemo(() => buildRangeSpans(participants), [participants])
+  const rangeSpans = useMemo(
+    () => buildRangeSpans(participants, labels),
+    [participants, labels]
+  )
   const rangesByDateKey = useMemo(
     () => buildRangesByDateKey(rangeSpans),
     [rangeSpans]
@@ -198,6 +203,13 @@ export function AvailabilityCalendar({
 
   const getDateClasses = (date: Date) => {
     const dateKey = format(date, "yyyy-MM-dd")
+    const dayRanges = rangesByDateKey.get(dateKey) ?? []
+    const hasInvalidLabelRange = dayRanges.some((r) => r.labelIsValid === false)
+
+    if (hasInvalidLabelRange) {
+      return "bg-zinc-200/70 dark:bg-zinc-600/40 text-muted-foreground font-medium"
+    }
+
     const availability = dateAvailabilityMap.get(dateKey)
     const totalParticipants = participants.filter((p) => !p.deleted_at).length
 
@@ -516,6 +528,7 @@ export function AvailabilityCalendar({
           anchorRect={anchorRect}
           roomId={roomId}
           range={selectedRange}
+          labels={labels}
           memos={memos}
           participants={participants}
           currentParticipantId={currentParticipantId}

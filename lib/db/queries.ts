@@ -7,6 +7,7 @@ import type {
   MemoMention,
   ParticipantWithDateRanges,
   Room,
+  RoomLabel,
 } from "@/lib/types"
 
 export async function getRoomByCode(code: string): Promise<Room | null> {
@@ -206,6 +207,7 @@ export async function getRoomParticipantsWithDateRanges(
       start_date::text AS start_date,
       end_date::text AS end_date,
       is_available,
+      label_id,
       created_at
     FROM date_ranges
     WHERE room_id = ${roomId}
@@ -297,15 +299,24 @@ export async function insertDateRange(data: {
   startDate: string
   endDate: string
   isAvailable: boolean
+  labelId?: string | null
 }) {
   await sql`
-    INSERT INTO date_ranges (participant_id, room_id, start_date, end_date, is_available)
+    INSERT INTO date_ranges (
+      participant_id,
+      room_id,
+      start_date,
+      end_date,
+      is_available,
+      label_id
+    )
     VALUES (
       ${data.participantId},
       ${data.roomId},
       ${data.startDate}::date,
       ${data.endDate}::date,
-      ${data.isAvailable}
+      ${data.isAvailable},
+      ${data.labelId ?? null}
     )
   `
 }
@@ -370,6 +381,18 @@ export async function getActiveRoomParticipantIds(
   return rows.map((r) => r.participant_id)
 }
 
+export async function getActiveRoomIdsForParticipant(
+  participantId: string
+): Promise<string[]> {
+  const rows = await sql<{ room_id: string }[]>`
+    SELECT room_id
+    FROM room_participants
+    WHERE participant_id = ${participantId}
+      AND is_active = true
+  `
+  return rows.map((r) => r.room_id)
+}
+
 export async function verifyDateRangeInRoom(
   roomId: string,
   dateRangeId: string
@@ -382,11 +405,202 @@ export async function verifyDateRangeInRoom(
       start_date::text AS start_date,
       end_date::text AS end_date,
       is_available,
+      label_id,
       created_at
     FROM date_ranges
     WHERE id = ${dateRangeId}
       AND room_id = ${roomId}
     LIMIT 1
+  `
+  const range = rows[0]
+  if (!range) return null
+  return {
+    ...range,
+    start_date: toISODateString(range.start_date),
+    end_date: toISODateString(range.end_date),
+  }
+}
+
+export async function getRoomLabels(roomId: string): Promise<RoomLabel[]> {
+  const rows = await sql<
+    (RoomLabel & { date_range_count: string })[]
+  >`
+    SELECT
+      rl.id,
+      rl.room_id,
+      rl.name,
+      rl.is_valid,
+      rl.created_by_participant_id,
+      rl.created_at,
+      rl.updated_at,
+      p.name AS created_by_name,
+      COUNT(dr.id)::text AS date_range_count
+    FROM room_labels rl
+    JOIN participants p ON p.id = rl.created_by_participant_id
+    LEFT JOIN date_ranges dr ON dr.label_id = rl.id
+    WHERE rl.room_id = ${roomId}
+    GROUP BY rl.id, p.name
+    ORDER BY rl.created_at ASC
+  `
+  return rows.map((row) => ({
+    id: row.id,
+    room_id: row.room_id,
+    name: row.name,
+    is_valid: row.is_valid,
+    created_by_participant_id: row.created_by_participant_id,
+    created_at: row.created_at,
+    updated_at: row.updated_at,
+    created_by_name: row.created_by_name,
+    date_range_count: Number(row.date_range_count),
+  }))
+}
+
+export async function verifyValidLabelInRoom(
+  roomId: string,
+  labelId: string
+): Promise<boolean> {
+  const rows = await sql<{ id: string }[]>`
+    SELECT id
+    FROM room_labels
+    WHERE id = ${labelId}
+      AND room_id = ${roomId}
+      AND is_valid = true
+    LIMIT 1
+  `
+  return rows.length > 0
+}
+
+export async function getRoomLabelById(
+  roomId: string,
+  labelId: string
+): Promise<RoomLabel | null> {
+  const rows = await sql<RoomLabel[]>`
+    SELECT
+      id,
+      room_id,
+      name,
+      is_valid,
+      created_by_participant_id,
+      created_at,
+      updated_at
+    FROM room_labels
+    WHERE id = ${labelId}
+      AND room_id = ${roomId}
+    LIMIT 1
+  `
+  return rows[0] ?? null
+}
+
+export async function createRoomLabel(data: {
+  roomId: string
+  participantId: string
+  name: string
+}): Promise<RoomLabel> {
+  const rows = await sql<RoomLabel[]>`
+    INSERT INTO room_labels (room_id, name, created_by_participant_id)
+    VALUES (${data.roomId}, ${data.name.trim()}, ${data.participantId})
+    RETURNING
+      id,
+      room_id,
+      name,
+      is_valid,
+      created_by_participant_id,
+      created_at,
+      updated_at
+  `
+  return { ...rows[0], date_range_count: 0 }
+}
+
+export async function updateRoomLabel(data: {
+  roomId: string
+  labelId: string
+  name?: string
+  isValid?: boolean
+}): Promise<RoomLabel | null> {
+  const existing = await getRoomLabelById(data.roomId, data.labelId)
+  if (!existing) return null
+
+  const name = data.name !== undefined ? data.name.trim() : existing.name
+  const isValid = data.isValid !== undefined ? data.isValid : existing.is_valid
+
+  const rows = await sql<RoomLabel[]>`
+    UPDATE room_labels
+    SET name = ${name}, is_valid = ${isValid}, updated_at = NOW()
+    WHERE id = ${data.labelId}
+      AND room_id = ${data.roomId}
+    RETURNING
+      id,
+      room_id,
+      name,
+      is_valid,
+      created_by_participant_id,
+      created_at,
+      updated_at
+  `
+  return rows[0] ?? null
+}
+
+export async function deleteRoomLabel(data: {
+  roomId: string
+  labelId: string
+  participantId: string
+}): Promise<boolean> {
+  const membership = await verifyRoomMembership(data.roomId, data.participantId)
+  if (!membership) throw new Error("FORBIDDEN")
+
+  const existing = await getRoomLabelById(data.roomId, data.labelId)
+  if (!existing) return false
+
+  const isAuthor = existing.created_by_participant_id === data.participantId
+  if (!isAuthor && !membership.isHost) throw new Error("FORBIDDEN")
+
+  const rows = await sql<{ id: string }[]>`
+    DELETE FROM room_labels
+    WHERE id = ${data.labelId}
+      AND room_id = ${data.roomId}
+    RETURNING id
+  `
+  return rows.length > 0
+}
+
+export async function updateDateRangeLabel(data: {
+  roomId: string
+  dateRangeId: string
+  participantId: string
+  labelId: string | null
+}): Promise<DateRange | null> {
+  const membership = await verifyRoomMembership(data.roomId, data.participantId)
+  if (!membership) throw new Error("FORBIDDEN")
+
+  const existing = await verifyDateRangeInRoom(data.roomId, data.dateRangeId)
+  if (!existing) return null
+
+  if (existing.label_id) {
+    const currentLabel = await getRoomLabelById(data.roomId, existing.label_id)
+    if (currentLabel && !currentLabel.is_valid) {
+      throw new Error("LABEL_LOCKED")
+    }
+  }
+
+  if (data.labelId !== null) {
+    const valid = await verifyValidLabelInRoom(data.roomId, data.labelId)
+    if (!valid) throw new Error("INVALID_LABEL")
+  }
+
+  const rows = await sql<DateRange[]>`
+    UPDATE date_ranges
+    SET label_id = ${data.labelId}
+    WHERE id = ${data.dateRangeId}
+      AND room_id = ${data.roomId}
+    RETURNING
+      id,
+      participant_id,
+      room_id,
+      start_date::text AS start_date,
+      end_date::text AS end_date,
+      is_available,
+      label_id,
+      created_at
   `
   const range = rows[0]
   if (!range) return null
@@ -519,6 +733,15 @@ export async function getMemoById(
   return memos.find((m) => m.id === memoId) ?? null
 }
 
+async function getInboxRecipientIdsForMemo(memoId: string): Promise<string[]> {
+  const rows = await sql<{ recipient_participant_id: string }[]>`
+    SELECT DISTINCT recipient_participant_id
+    FROM inbox_notifications
+    WHERE memo_id = ${memoId}
+  `
+  return rows.map((r) => r.recipient_participant_id)
+}
+
 async function insertMemoMentionsAndInbox(
   memoId: string,
   roomId: string,
@@ -528,32 +751,52 @@ async function insertMemoMentionsAndInbox(
   const affectedRecipients: string[] = []
 
   for (const participantId of mentionParticipantIds) {
-    const mentionRows = await sql<{ id: string }[]>`
+    let mentionRows = await sql<{ id: string }[]>`
       INSERT INTO memo_mentions (memo_id, mentioned_participant_id)
       VALUES (${memoId}, ${participantId})
       ON CONFLICT (memo_id, mentioned_participant_id) DO NOTHING
       RETURNING id
     `
 
-    const mentionId = mentionRows[0]?.id
+    let mentionId = mentionRows[0]?.id
+
+    if (!mentionId) {
+      const existing = await sql<{ id: string }[]>`
+        SELECT id FROM memo_mentions
+        WHERE memo_id = ${memoId}
+          AND mentioned_participant_id = ${participantId}
+        LIMIT 1
+      `
+      mentionId = existing[0]?.id
+    }
+
     if (!mentionId) continue
 
-    await sql`
-      INSERT INTO inbox_notifications (
-        recipient_participant_id,
-        room_id,
-        date_range_id,
-        memo_id,
-        mention_id
-      )
-      VALUES (
-        ${participantId},
-        ${roomId},
-        ${dateRangeId},
-        ${memoId},
-        ${mentionId}
-      )
+    const existingInbox = await sql<{ id: string }[]>`
+      SELECT id FROM inbox_notifications
+      WHERE mention_id = ${mentionId}
+      LIMIT 1
     `
+
+    if (existingInbox.length === 0) {
+      await sql`
+        INSERT INTO inbox_notifications (
+          recipient_participant_id,
+          room_id,
+          date_range_id,
+          memo_id,
+          mention_id
+        )
+        VALUES (
+          ${participantId},
+          ${roomId},
+          ${dateRangeId},
+          ${memoId},
+          ${mentionId}
+        )
+      `
+    }
+
     affectedRecipients.push(participantId)
   }
 
@@ -643,6 +886,10 @@ export async function updateMemo(data: {
   for (const mention of existing.mentions ?? []) {
     if (!newMentionIds.has(mention.mentioned_participant_id)) {
       await sql`
+        DELETE FROM inbox_notifications
+        WHERE mention_id = ${mention.id}
+      `
+      await sql`
         DELETE FROM memo_mentions WHERE id = ${mention.id}
       `
       affectedRecipientIds.add(mention.mentioned_participant_id)
@@ -685,9 +932,18 @@ export async function deleteMemo(data: {
   const isAuthor = existing.author_participant_id === data.participantId
   if (!isAuthor && !membership.isHost) throw new Error("FORBIDDEN")
 
-  const affectedRecipientIds = (existing.mentions ?? []).map(
+  const inboxRecipientIds = await getInboxRecipientIdsForMemo(data.memoId)
+  const mentionRecipientIds = (existing.mentions ?? []).map(
     (m) => m.mentioned_participant_id
   )
+  const affectedRecipientIds = [
+    ...new Set([...inboxRecipientIds, ...mentionRecipientIds]),
+  ]
+
+  await sql`
+    DELETE FROM inbox_notifications
+    WHERE memo_id = ${data.memoId}
+  `
 
   await sql`
     DELETE FROM memos
@@ -712,9 +968,24 @@ export async function getMentionedDateRangeIdsForParticipant(
   return rows.map((r) => r.date_range_id)
 }
 
+export function mergeInboxRecipientIds(...lists: (string | undefined)[][]): string[] {
+  return [...new Set(lists.flat().filter((id): id is string => Boolean(id)))]
+}
+
+export async function pruneOrphanInboxNotifications(): Promise<void> {
+  await sql`
+    DELETE FROM inbox_notifications i
+    WHERE NOT EXISTS (
+      SELECT 1 FROM memos m WHERE m.id = i.memo_id
+    )
+  `
+}
+
 export async function getInboxByParticipantId(
   participantId: string
 ): Promise<InboxNotification[]> {
+  await pruneOrphanInboxNotifications()
+
   const rows = await sql<
     {
       id: string
@@ -776,11 +1047,14 @@ export async function getInboxByParticipantId(
 }
 
 export async function getInboxUnreadCount(participantId: string): Promise<number> {
+  await pruneOrphanInboxNotifications()
+
   const rows = await sql<{ count: string }[]>`
     SELECT COUNT(*)::text AS count
-    FROM inbox_notifications
-    WHERE recipient_participant_id = ${participantId}
-      AND is_read = false
+    FROM inbox_notifications i
+    JOIN memos m ON m.id = i.memo_id
+    WHERE i.recipient_participant_id = ${participantId}
+      AND i.is_read = false
   `
   return Number(rows[0]?.count ?? 0)
 }
