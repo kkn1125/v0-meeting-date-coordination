@@ -174,7 +174,9 @@ export default function HomePage() {
     }
   };
 
-  const handleAuthSubmit = async () => {
+  const handleAuthSubmit = async (e?: React.SubmitEvent<HTMLFormElement>) => {
+    e?.preventDefault();
+
     if (!authName.trim() || !authPassword.trim()) {
       setAuthError("이름과 비밀번호를 입력해주세요.");
       return;

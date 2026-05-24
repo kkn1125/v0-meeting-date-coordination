@@ -7,11 +7,11 @@ import type { RangeSpanWithKeys } from "@/lib/calendar-ranges";
 import { requestInboxRefresh } from "@/lib/inbox-events";
 import { parseMemoContent } from "@/lib/memo-content";
 import type { Memo, ParticipantWithDateRanges, RoomLabel } from "@/lib/types";
-import { LabelSelectField } from "./label-select-field";
 import { format, parseISO } from "date-fns";
 import { ko } from "date-fns/locale";
 import { Pencil, Trash2, X } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { LabelSelectField } from "./label-select-field";
 import { MentionInput } from "./mention-input";
 
 interface PeriodMemoPanelProps {
@@ -29,10 +29,27 @@ interface PeriodMemoPanelProps {
   onMemosChange: (memos: Memo[]) => void;
 }
 
+function MemoTextPart({ value }: { value: string }) {
+  const lines = value.split("\n");
+  if (lines.length === 1) {
+    return <>{value}</>;
+  }
+  return (
+    <>
+      {lines.map((line, i) => (
+        <span key={i}>
+          {i > 0 && <br />}
+          {line}
+        </span>
+      ))}
+    </>
+  );
+}
+
 function MemoContentDisplay({ content }: { content: string }) {
   const parts = parseMemoContent(content);
   return (
-    <span className="whitespace-pre-wrap break-words text-sm">
+    <div className="whitespace-pre-wrap wrap-break-words text-sm">
       {parts.map((part, i) =>
         part.type === "mention" ? (
           <Badge
@@ -41,15 +58,15 @@ function MemoContentDisplay({ content }: { content: string }) {
               backgroundColor: "#C7E0FF", // pastel blue
               color: "#205081", // darker blue for text
             }}
-            className="mx-0.5 px-[5px] py-0.5 text-xs border-none"
+            className="mx-0.5 inline px-[5px] py-0.5 text-xs align-baseline border-none"
           >
             @{part.name}
           </Badge>
         ) : (
-          <span key={i}>{part.value}</span>
+          <MemoTextPart key={i} value={part.value} />
         ),
       )}
-    </span>
+    </div>
   );
 }
 
@@ -133,13 +150,16 @@ export function PeriodMemoPanel({
     setIsSubmitting(true);
     try {
       if (editingMemoId) {
-        const res = await apiFetch(`/api/rooms/${roomId}/memos/${editingMemoId}`, {
-          method: "PATCH",
-          body: JSON.stringify({
-            content,
-            mentionParticipantIds: mentionIds,
-          }),
-        });
+        const res = await apiFetch(
+          `/api/rooms/${roomId}/memos/${editingMemoId}`,
+          {
+            method: "PATCH",
+            body: JSON.stringify({
+              content,
+              mentionParticipantIds: mentionIds,
+            }),
+          },
+        );
         const data = await res.json();
         if (!res.ok) throw new Error(data.error);
         onMemosChange(

@@ -19,7 +19,7 @@ export async function PATCH(
 
     const { content, mentionParticipantIds } = await request.json()
 
-    if (!content?.trim()) {
+    if (typeof content !== "string" || !content.trim()) {
       return NextResponse.json({ error: "필수 필드가 누락되었습니다." }, { status: 400 })
     }
 
@@ -32,7 +32,7 @@ export async function PATCH(
       roomId,
       memoId,
       authorParticipantId: auth.participantId,
-      content: content.trim(),
+      content,
       mentionParticipantIds: mentions,
     })
 

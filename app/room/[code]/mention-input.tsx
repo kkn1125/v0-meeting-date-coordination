@@ -40,6 +40,10 @@ function escapeHtml(text: string): string {
     .replace(/"/g, "&quot;");
 }
 
+function textToEditorHtml(text: string): string {
+  return escapeHtml(text).replace(/\n/g, "<br>");
+}
+
 function contentToEditorHtml(content: string): string {
   const parts = parseMemoContent(content);
   if (parts.length === 0) return "";
@@ -51,7 +55,7 @@ function contentToEditorHtml(content: string): string {
         const id = escapeHtml(part.participantId);
         return `<span class="${MENTION_CHIP_CLASS}" contenteditable="false" data-mention-id="${id}" data-mention-name="${name}">@${name}</span>`;
       }
-      return escapeHtml(part.value);
+      return textToEditorHtml(part.value);
     })
     .join("");
 }
@@ -63,34 +67,51 @@ function isMentionElement(node: Node): node is HTMLElement {
   );
 }
 
-function domToContent(root: HTMLElement): string {
+function isBlockElement(element: HTMLElement): boolean {
+  const tag = element.tagName;
+  return tag === "DIV" || tag === "P";
+}
+
+function serializeNode(node: Node): string {
+  if (node.nodeType === Node.TEXT_NODE) {
+    return node.textContent ?? "";
+  }
+  if (node.nodeType !== Node.ELEMENT_NODE) return "";
+
+  const element = node as HTMLElement;
+  if (element.dataset.mentionId !== undefined) {
+    const id = element.dataset.mentionId;
+    const name = element.dataset.mentionName;
+    return id && name ? serializeMention(name, id) : "";
+  }
+  if (element instanceof HTMLBRElement) {
+    return "\n";
+  }
+  if (isBlockElement(element)) {
+    return serializeChildNodes(element);
+  }
+  return serializeChildNodes(element);
+}
+
+/** contenteditable Enter가 만드는 div/p 경계를 줄바꿈(\n)으로 직렬화 */
+function serializeChildNodes(parent: HTMLElement): string {
   let result = "";
-
-  const walk = (node: Node) => {
-    if (node.nodeType === Node.TEXT_NODE) {
-      result += node.textContent ?? "";
-      return;
-    }
-    if (node.nodeType !== Node.ELEMENT_NODE) return;
-
-    const element = node as HTMLElement;
-    if (element.dataset.mentionId !== undefined) {
-      const id = element.dataset.mentionId;
-      const name = element.dataset.mentionName;
-      if (id && name) {
-        result += serializeMention(name, id);
-      }
-      return;
-    }
-    if (element instanceof HTMLBRElement) {
+  for (const child of parent.childNodes) {
+    if (
+      child.nodeType === Node.ELEMENT_NODE &&
+      isBlockElement(child as HTMLElement) &&
+      result.length > 0 &&
+      !result.endsWith("\n")
+    ) {
       result += "\n";
-      return;
     }
-    element.childNodes.forEach(walk);
-  };
-
-  root.childNodes.forEach(walk);
+    result += serializeNode(child);
+  }
   return result;
+}
+
+function domToContent(root: HTMLElement): string {
+  return serializeChildNodes(root);
 }
 
 function getTextBeforeCursor(editor: HTMLElement, range: Range): string {
