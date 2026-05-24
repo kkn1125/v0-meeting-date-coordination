@@ -1,31 +1,23 @@
 import { NextRequest, NextResponse } from "next/server"
-import { findParticipantById, getRoomParticipantLink } from "@/lib/db/queries"
-import { verifyPassword, createSession } from "@/lib/auth"
+import { findParticipantById } from "@/lib/db/queries"
+import { verifyPassword, setAuthCookieOnResponse } from "@/lib/auth"
 
 export async function POST(request: NextRequest) {
   try {
-    const { name, password, roomId, participantId } = await request.json()
+    const { participantId, password } = await request.json()
 
-    let participant
-
-    if (participantId) {
-      participant = await findParticipantById(participantId)
-      if (!participant) {
-        return NextResponse.json(
-          { error: "참여자를 찾을 수 없습니다." },
-          { status: 404 }
-        )
-      }
-    } else {
-      if (!name?.trim() || !password?.trim()) {
-        return NextResponse.json(
-          { error: "이름과 비밀번호를 입력해주세요." },
-          { status: 400 }
-        )
-      }
-
+    if (!participantId || !password?.trim()) {
       return NextResponse.json(
-        { error: "참여자를 찾을 수 없습니다." },
+        { error: "participantId와 비밀번호가 필요합니다." },
+        { status: 400 }
+      )
+    }
+
+    const participant = await findParticipantById(participantId)
+
+    if (!participant) {
+      return NextResponse.json(
+        { error: "참가자를 찾을 수 없습니다." },
         { status: 404 }
       )
     }
@@ -46,27 +38,12 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    const link = roomId
-      ? await getRoomParticipantLink(roomId, participant.id)
-      : null
-
-    const session = createSession(
-      participant.id,
-      roomId ?? "",
-      participant.name,
-      link?.is_host ?? false
-    )
-
-    return NextResponse.json({
+    const response = NextResponse.json({
       success: true,
-      session,
-      participant: {
-        ...participant,
-        room_id: roomId,
-        is_host: link?.is_host ?? false,
-        deleted_at: link?.is_active === false ? new Date().toISOString() : null,
-      },
+      user: { id: participant.id, name: participant.name },
     })
+
+    return setAuthCookieOnResponse(response, participant.id)
   } catch (error) {
     console.error("Login error:", error)
     return NextResponse.json(

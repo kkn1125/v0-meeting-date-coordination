@@ -21,7 +21,7 @@ function normalizeParticipants(
 }
 
 async function ensureSocketServer() {
-  const res = await fetch(SOCKET_BOOTSTRAP_PATH)
+  const res = await fetch(SOCKET_BOOTSTRAP_PATH, { credentials: "include" })
   if (!res.ok) {
     throw new Error("Failed to initialize socket server")
   }
@@ -63,15 +63,12 @@ export function useRoomSocket(
         const socket = io({
           path: SOCKET_IO_PATH,
           addTrailingSlash: false,
+          withCredentials: true,
         })
         socketRef.current = socket
 
         const joinRoom = () => {
           socket.emit(SOCKET_EVENTS.JOIN_ROOM, roomId)
-          const pid = participantIdRef.current
-          if (pid) {
-            socket.emit(SOCKET_EVENTS.JOIN_PARTICIPANT, pid)
-          }
         }
 
         const handleParticipantsUpdated = (data: {
@@ -131,11 +128,4 @@ export function useRoomSocket(
       }
     }
   }, [roomId])
-
-  useEffect(() => {
-    const socket = socketRef.current
-    const pid = participantId
-    if (!socket?.connected || !pid) return
-    socket.emit(SOCKET_EVENTS.JOIN_PARTICIPANT, pid)
-  }, [participantId])
 }

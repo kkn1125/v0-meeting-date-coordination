@@ -3,6 +3,7 @@ import {
   deleteInboxNotification,
   toggleInboxRead,
 } from "@/lib/db/queries"
+import { requireAuth, isAuthError } from "@/lib/auth"
 import { notifyInboxUpdated } from "@/lib/socket/notify-relay"
 
 export async function PATCH(
@@ -10,19 +11,22 @@ export async function PATCH(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const { id } = await params
-    const { participantId, isRead } = await request.json()
+    const auth = await requireAuth(request)
+    if (isAuthError(auth)) return auth
 
-    if (!participantId || typeof isRead !== "boolean") {
+    const { id } = await params
+    const { isRead } = await request.json()
+
+    if (typeof isRead !== "boolean") {
       return NextResponse.json({ error: "필수 필드가 누락되었습니다." }, { status: 400 })
     }
 
-    const updated = await toggleInboxRead(id, participantId, isRead)
+    const updated = await toggleInboxRead(id, auth.participantId, isRead)
     if (!updated) {
       return NextResponse.json({ error: "알림을 찾을 수 없습니다." }, { status: 404 })
     }
 
-    await notifyInboxUpdated([participantId], request)
+    await notifyInboxUpdated([auth.participantId], request)
     return NextResponse.json({ success: true })
   } catch (error) {
     console.error("Toggle inbox read error:", error)
@@ -35,19 +39,17 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const auth = await requireAuth(request)
+    if (isAuthError(auth)) return auth
+
     const { id } = await params
-    const { participantId } = await request.json()
 
-    if (!participantId) {
-      return NextResponse.json({ error: "participantId가 필요합니다." }, { status: 400 })
-    }
-
-    const deleted = await deleteInboxNotification(id, participantId)
+    const deleted = await deleteInboxNotification(id, auth.participantId)
     if (!deleted) {
       return NextResponse.json({ error: "알림을 찾을 수 없습니다." }, { status: 404 })
     }
 
-    await notifyInboxUpdated([participantId], request)
+    await notifyInboxUpdated([auth.participantId], request)
     return NextResponse.json({ success: true })
   } catch (error) {
     console.error("Delete inbox error:", error)

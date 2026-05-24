@@ -1,5 +1,6 @@
 import type { NextRequest } from "next/server"
 import { headers } from "next/headers"
+import { getSocketNotifySecret } from "@/lib/auth/notify"
 import { broadcastInboxMany } from "@/lib/socket/broadcast"
 import { getIO } from "@/lib/socket/io"
 
@@ -35,6 +36,17 @@ async function resolveNotifyUrl(request?: Request | NextRequest) {
   return getDefaultNotifyUrl()
 }
 
+function notifyHeaders(): Record<string, string> {
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+  }
+  const secret = getSocketNotifySecret()
+  if (secret) {
+    headers["x-socket-notify-secret"] = secret
+  }
+  return headers
+}
+
 async function postNotify(
   payload: Record<string, unknown>,
   request?: Request | NextRequest
@@ -42,7 +54,7 @@ async function postNotify(
   const url = await resolveNotifyUrl(request)
   const res = await fetch(url, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: notifyHeaders(),
     body: JSON.stringify(payload),
     cache: "no-store",
   })

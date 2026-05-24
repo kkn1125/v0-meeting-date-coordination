@@ -1,27 +1,25 @@
 import { NextRequest, NextResponse } from "next/server"
 import {
   insertDateRange,
-  verifyRoomMembership,
   verifyValidLabelInRoom,
 } from "@/lib/db/queries"
+import { requireRoomMember, isAuthError } from "@/lib/auth"
 import { broadcastRoomParticipants } from "@/lib/socket/broadcast"
 
 export async function POST(request: NextRequest) {
   try {
-    const { participantId, roomId, startDate, endDate, isAvailable, labelId } =
+    const { roomId, startDate, endDate, isAvailable, labelId } =
       await request.json()
 
-    if (!participantId || !roomId || !startDate || !endDate) {
+    if (!roomId || !startDate || !endDate) {
       return NextResponse.json(
         { error: "필수 필드가 누락되었습니다." },
         { status: 400 }
       )
     }
 
-    const membership = await verifyRoomMembership(roomId, participantId)
-    if (!membership) {
-      return NextResponse.json({ error: "방 참여 권한이 없습니다." }, { status: 403 })
-    }
+    const auth = await requireRoomMember(request, roomId)
+    if (isAuthError(auth)) return auth
 
     if (labelId) {
       const valid = await verifyValidLabelInRoom(roomId, labelId)
@@ -31,7 +29,7 @@ export async function POST(request: NextRequest) {
     }
 
     await insertDateRange({
-      participantId,
+      participantId: auth.participantId,
       roomId,
       startDate,
       endDate,

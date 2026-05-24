@@ -5,8 +5,8 @@ import {
   getMemosByRoom,
   mergeInboxRecipientIds,
   verifyDateRangeInRoom,
-  verifyRoomMembership,
 } from "@/lib/db/queries"
+import { requireRoomMember, isAuthError } from "@/lib/auth"
 import { notifyRoomMemosUpdated } from "@/lib/socket/notify-relay"
 
 export async function GET(
@@ -15,6 +15,9 @@ export async function GET(
 ) {
   try {
     const { roomId } = await params
+    const auth = await requireRoomMember(request, roomId)
+    if (isAuthError(auth)) return auth
+
     const dateRangeId = request.nextUrl.searchParams.get("dateRangeId") ?? undefined
     const memos = await getMemosByRoom(roomId, dateRangeId)
     return NextResponse.json({ memos })
@@ -30,16 +33,13 @@ export async function POST(
 ) {
   try {
     const { roomId } = await params
-    const { authorParticipantId, dateRangeId, content, mentionParticipantIds } =
-      await request.json()
+    const auth = await requireRoomMember(request, roomId)
+    if (isAuthError(auth)) return auth
 
-    if (!authorParticipantId || !dateRangeId || !content?.trim()) {
+    const { dateRangeId, content, mentionParticipantIds } = await request.json()
+
+    if (!dateRangeId || !content?.trim()) {
       return NextResponse.json({ error: "필수 필드가 누락되었습니다." }, { status: 400 })
-    }
-
-    const membership = await verifyRoomMembership(roomId, authorParticipantId)
-    if (!membership) {
-      return NextResponse.json({ error: "방 참여 권한이 없습니다." }, { status: 403 })
     }
 
     const dateRange = await verifyDateRangeInRoom(roomId, dateRangeId)
@@ -55,7 +55,7 @@ export async function POST(
     const memoResult = await createMemo({
       roomId,
       dateRangeId,
-      authorParticipantId,
+      authorParticipantId: auth.participantId,
       content: content.trim(),
       mentionParticipantIds: mentions,
     })
@@ -63,7 +63,7 @@ export async function POST(
     const inboxRecipients = mergeInboxRecipientIds(
       memoResult.affectedRecipientIds,
       mentions,
-      [authorParticipantId]
+      [auth.participantId]
     )
     await notifyRoomMemosUpdated(roomId, inboxRecipients)
 

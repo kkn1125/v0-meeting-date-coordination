@@ -13,13 +13,10 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useRoomSocket } from "@/hooks/use-room-socket";
-import {
-  clearSessionFromStorage,
-  getGlobalSessionFromStorage,
-  getSessionFromStorage,
-} from "@/lib/auth";
+import { apiFetch } from "@/lib/api-client";
 import { requestInboxRefresh } from "@/lib/inbox-events";
 import type {
+  AuthUser,
   Memo,
   ParticipantWithDateRanges,
   Room,
@@ -92,7 +89,7 @@ export function RoomClient({
   useEffect(() => {
     const loadMemos = async () => {
       try {
-        const res = await fetch(`/api/rooms/${room.id}/memos`);
+        const res = await apiFetch(`/api/rooms/${room.id}/memos`);
         const data = await res.json();
         if (res.ok) setMemos(data.memos ?? []);
       } catch (error) {
@@ -103,65 +100,68 @@ export function RoomClient({
   }, [room.id]);
 
   useEffect(() => {
-    const roomSession = getSessionFromStorage(room.id);
-    if (roomSession) {
-      const existingById = initialParticipants.find(
-        (p) => p.id === roomSession.participantId,
-      );
-      if (existingById) {
-        setCurrentParticipant(existingById);
-        return;
-      }
-    }
-
-    const globalSession = getGlobalSessionFromStorage();
-    if (globalSession) {
-      const existingByName = initialParticipants.find(
-        (p) => p.name === globalSession.name && !p.deleted_at,
-      );
-      if (existingByName) {
-        setCurrentParticipant(existingByName);
-      }
-
-      (async () => {
-        try {
-          const res = await fetch("/api/rooms/membership", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ roomId: room.id, name: globalSession.name }),
-          });
-          const data = await res.json();
-          if (!res.ok) return;
-
-          if (data.status === "inactive") {
-            setIsMembershipInactive(true);
-            return;
-          }
-
-          if (data.status === "none") {
-            try {
-              const joinRes = await fetch(`/api/rooms/${room.id}/join`, {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ name: globalSession.name.trim() }),
-              });
-              if (!joinRes.ok) throw new Error("Auto-join failed");
-            } catch (e) {
-              console.error("Auto-join error:", e);
-            }
-          }
-        } catch (e) {
-          console.error(e);
+    const resolveSession = async () => {
+      try {
+        const meRes = await apiFetch("/api/auth/me");
+        if (!meRes.ok) {
+          setIsLoginRequired(true);
+          return;
         }
-      })();
-      return;
-    }
 
-    setIsLoginRequired(true);
+        const meData = (await meRes.json()) as { user: AuthUser };
+        const authUser = meData.user;
+
+        const existingById = initialParticipants.find(
+          (p) => p.id === authUser.id && !p.deleted_at,
+        );
+        if (existingById) {
+          setCurrentParticipant(existingById);
+        } else {
+          const existingByName = initialParticipants.find(
+            (p) => p.name === authUser.name && !p.deleted_at,
+          );
+          if (existingByName) {
+            setCurrentParticipant(existingByName);
+          }
+        }
+
+        const res = await apiFetch("/api/rooms/membership", {
+          method: "POST",
+          body: JSON.stringify({ roomId: room.id }),
+        });
+        const data = await res.json();
+        if (!res.ok) return;
+
+        if (data.status === "inactive") {
+          setIsMembershipInactive(true);
+          return;
+        }
+
+        if (data.status === "none") {
+          try {
+            const joinRes = await apiFetch(`/api/rooms/${room.id}/join`, {
+              method: "POST",
+              body: JSON.stringify({}),
+            });
+            if (!joinRes.ok) throw new Error("Auto-join failed");
+            const joinData = await joinRes.json();
+            if (joinData.participant) {
+              setCurrentParticipant(joinData.participant);
+            }
+          } catch (e) {
+            console.error("Auto-join error:", e);
+          }
+        }
+      } catch (e) {
+        console.error(e);
+        setIsLoginRequired(true);
+      }
+    };
+
+    void resolveSession();
   }, [room.id, initialParticipants]);
 
   const handleLogout = () => {
-    clearSessionFromStorage(room.id);
     setCurrentParticipant(null);
   };
 
@@ -239,7 +239,7 @@ export function RoomClient({
                         onClick={handleLogout}
                       >
                         <LogOut className="h-4 w-4" />
-                        로그아웃
+                        이 방에서 나가기
                       </Button>
                     </>
                   ) : (

@@ -10,6 +10,7 @@ import {
 } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
+import { apiFetch } from "@/lib/api-client";
 import { toISOStringValue } from "@/lib/dates";
 import type { RoomLabel } from "@/lib/types";
 import { format } from "date-fns";
@@ -42,10 +43,9 @@ export function RoomLabelsPanel({
     if (!name) return;
     setIsSubmitting(true);
     try {
-      const res = await fetch(`/api/rooms/${roomId}/labels`, {
+      const res = await apiFetch(`/api/rooms/${roomId}/labels`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ participantId: currentParticipantId, name }),
+        body: JSON.stringify({ name }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error);
@@ -60,13 +60,9 @@ export function RoomLabelsPanel({
 
   const handleToggleValid = async (label: RoomLabel, isValid: boolean) => {
     try {
-      const res = await fetch(`/api/rooms/${roomId}/labels/${label.id}`, {
+      const res = await apiFetch(`/api/rooms/${roomId}/labels/${label.id}`, {
         method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          participantId: currentParticipantId,
-          isValid,
-        }),
+        body: JSON.stringify({ isValid }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error);
@@ -83,13 +79,9 @@ export function RoomLabelsPanel({
     if (!name) return;
     setIsSubmitting(true);
     try {
-      const res = await fetch(`/api/rooms/${roomId}/labels/${labelId}`, {
+      const res = await apiFetch(`/api/rooms/${roomId}/labels/${labelId}`, {
         method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          participantId: currentParticipantId,
-          name,
-        }),
+        body: JSON.stringify({ name }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error);
@@ -106,10 +98,9 @@ export function RoomLabelsPanel({
 
   const handleDelete = async (labelId: string) => {
     try {
-      const res = await fetch(`/api/rooms/${roomId}/labels/${labelId}`, {
+      const res = await apiFetch(`/api/rooms/${roomId}/labels/${labelId}`, {
         method: "DELETE",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ participantId: currentParticipantId }),
+        body: JSON.stringify({}),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error);

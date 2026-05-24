@@ -1,28 +1,19 @@
 import { NextRequest, NextResponse } from "next/server"
-import {
-  findParticipantByName,
-  getInboxByParticipantId,
-} from "@/lib/db/queries"
+import { getInboxByParticipantId } from "@/lib/db/queries"
+import { requireAuth, isAuthError } from "@/lib/auth"
 
 export async function GET(request: NextRequest) {
   try {
-    const participantName = request.nextUrl.searchParams.get("participantName")
-    if (!participantName) {
-      return NextResponse.json({ error: "participantName이 필요합니다." }, { status: 400 })
-    }
+    const auth = await requireAuth(request)
+    if (isAuthError(auth)) return auth
 
-    const participant = await findParticipantByName(participantName)
-    if (!participant) {
-      return NextResponse.json({ notifications: [], unreadCount: 0, participantId: null })
-    }
-
-    const notifications = await getInboxByParticipantId(participant.id)
+    const notifications = await getInboxByParticipantId(auth.participantId)
     const unreadCount = notifications.filter((n) => !n.is_read).length
 
     return NextResponse.json({
       notifications,
       unreadCount,
-      participantId: participant.id,
+      participantId: auth.participantId,
     })
   } catch (error) {
     console.error("Get inbox error:", error)

@@ -2,11 +2,10 @@ import { NextRequest, NextResponse } from "next/server"
 import {
   createRoom,
   createRoomParticipantLink,
-  createParticipant,
-  findParticipantByName,
   getRoomByCode,
   updateRoomCreator,
 } from "@/lib/db/queries"
+import { requireAuth, isAuthError } from "@/lib/auth"
 
 function generateRoomCode(): string {
   const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
@@ -38,26 +37,20 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
-    const { name, hostName } = await request.json()
+    const auth = await requireAuth(request)
+    if (isAuthError(auth)) return auth
+
+    const { name } = await request.json()
 
     if (!name?.trim()) {
       return NextResponse.json({ error: "모임 이름이 필요합니다." }, { status: 400 })
     }
 
-    if (!hostName?.trim()) {
-      return NextResponse.json({ error: "호스트 이름이 필요합니다." }, { status: 400 })
-    }
-
     const code = generateRoomCode()
     const room = await createRoom(name.trim(), code)
 
-    let participant = await findParticipantByName(hostName.trim())
-    if (!participant) {
-      participant = await createParticipant(hostName.trim())
-    }
-
-    await createRoomParticipantLink(room.id, participant.id, true)
-    await updateRoomCreator(room.id, participant.id)
+    await createRoomParticipantLink(room.id, auth.participantId, true)
+    await updateRoomCreator(room.id, auth.participantId)
 
     return NextResponse.json({ room })
   } catch (error) {

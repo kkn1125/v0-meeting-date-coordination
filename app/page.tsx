@@ -13,12 +13,8 @@ import {
 import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import {
-  clearGlobalSessionFromStorage,
-  getGlobalSessionFromStorage,
-  setGlobalSessionToStorage,
-} from "@/lib/auth";
-import type { GlobalSessionPayload } from "@/lib/types";
+import { apiFetch } from "@/lib/api-client";
+import type { AuthUser } from "@/lib/types";
 import {
   CalendarDays,
   DoorOpen,
@@ -31,15 +27,6 @@ import {
 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
-
-function generateRoomCode(): string {
-  const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
-  let code = "";
-  for (let i = 0; i < 6; i++) {
-    code += chars.charAt(Math.floor(Math.random() * chars.length));
-  }
-  return code;
-}
 
 interface JoinedRoom {
   id: string;
@@ -58,8 +45,7 @@ export default function HomePage() {
   const [error, setError] = useState("");
   const [roomCount, setRoomCount] = useState<number | null>(null);
 
-  const [globalSession, setGlobalSession] =
-    useState<GlobalSessionPayload | null>(null);
+  const [authUser, setAuthUser] = useState<AuthUser | null>(null);
   const [joinedRooms, setJoinedRooms] = useState<JoinedRoom[]>([]);
   const [isLoadingJoinedRooms, setIsLoadingJoinedRooms] = useState(false);
 
@@ -79,20 +65,27 @@ export default function HomePage() {
   }, []);
 
   useEffect(() => {
-    const session = getGlobalSessionFromStorage();
-    if (session) {
-      setGlobalSession(session);
-      void loadJoinedRooms(session.name);
-    }
+    void (async () => {
+      try {
+        const res = await apiFetch("/api/auth/me");
+        if (!res.ok) return;
+        const data = await res.json();
+        if (data.user) {
+          setAuthUser(data.user);
+          void loadJoinedRooms();
+        }
+      } catch (e) {
+        console.error(e);
+      }
+    })();
   }, []);
 
-  const loadJoinedRooms = async (name: string) => {
+  const loadJoinedRooms = async () => {
     setIsLoadingJoinedRooms(true);
     try {
-      const res = await fetch("/api/rooms/by-user", {
+      const res = await apiFetch("/api/rooms/by-user", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name }),
+        body: JSON.stringify({}),
       });
       const data = await res.json();
       if (!res.ok) {
@@ -110,7 +103,7 @@ export default function HomePage() {
   };
 
   const requireLogin = () => {
-    if (!globalSession) {
+    if (!authUser) {
       setError("로그인 후 이용하실 수 있습니다.");
       setAuthMode("login");
       setShowAuthModal(true);
@@ -131,14 +124,10 @@ export default function HomePage() {
     setError("");
 
     try {
-      const code = generateRoomCode();
-
-      const res = await fetch("/api/rooms", {
+      const res = await apiFetch("/api/rooms", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           name: roomName.trim(),
-          hostName: globalSession?.name ?? "",
         }),
       });
 
@@ -166,7 +155,7 @@ export default function HomePage() {
     setError("");
 
     try {
-      const res = await fetch(
+      const res = await apiFetch(
         `/api/rooms?code=${encodeURIComponent(joinCode.trim().toUpperCase())}`,
       );
       const data = await res.json();
@@ -206,9 +195,8 @@ export default function HomePage() {
 
     try {
       if (authMode === "signup") {
-        const signupRes = await fetch("/api/auth/signup", {
+        const signupRes = await apiFetch("/api/auth/signup", {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             name: authName.trim(),
             password: authPassword,
@@ -222,18 +210,12 @@ export default function HomePage() {
           return;
         }
 
-        const session: GlobalSessionPayload = {
-          name: signupData.name ?? authName.trim(),
-          expiresAt: Date.now() + 30 * 60 * 1000,
-        };
-        setGlobalSession(session);
-        setGlobalSessionToStorage(session);
-        void loadJoinedRooms(session.name);
+        setAuthUser(signupData.user);
+        void loadJoinedRooms();
         resetAuthModal();
       } else {
-        const loginRes = await fetch("/api/auth/global-login", {
+        const loginRes = await apiFetch("/api/auth/global-login", {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             name: authName.trim(),
             password: authPassword,
@@ -247,10 +229,8 @@ export default function HomePage() {
           return;
         }
 
-        const session = loginData.session as GlobalSessionPayload;
-        setGlobalSession(session);
-        setGlobalSessionToStorage(session);
-        void loadJoinedRooms(session.name);
+        setAuthUser(loginData.user);
+        void loadJoinedRooms();
         resetAuthModal();
       }
     } catch (err) {
@@ -269,9 +249,13 @@ export default function HomePage() {
     setAuthError("");
   };
 
-  const handleLogout = () => {
-    clearGlobalSessionFromStorage();
-    setGlobalSession(null);
+  const handleLogout = async () => {
+    try {
+      await apiFetch("/api/auth/logout", { method: "POST" });
+    } catch (e) {
+      console.error(e);
+    }
+    setAuthUser(null);
     setJoinedRooms([]);
   };
 
@@ -279,10 +263,10 @@ export default function HomePage() {
     <main className="min-h-screen flex items-center justify-center p-4 bg-background">
       <div className="w-full max-w-md">
         <div className="mb-4 flex items-center justify-between">
-          {globalSession ? (
+          {authUser ? (
             <div className="flex items-center gap-2 text-sm">
               <span className="text-muted-foreground">안녕하세요,</span>
-              <span className="font-medium">{globalSession.name}</span>
+              <span className="font-medium">{authUser.name}</span>
               <Badge variant="outline" className="text-[10px]">
                 로그인됨
               </Badge>
@@ -293,7 +277,7 @@ export default function HomePage() {
             </div>
           )}
           <div className="flex items-center gap-2">
-            {globalSession ? (
+            {authUser ? (
               <Button
                 size="sm"
                 variant="outline"
@@ -378,12 +362,12 @@ export default function HomePage() {
                 </FieldGroup>
                 <Button
                   onClick={handleCreateRoom}
-                  disabled={isCreating || !globalSession}
+                  disabled={isCreating || !authUser}
                   className="w-full mt-4"
                 >
                   {isCreating ? "생성 중..." : "모임 만들기"}
                 </Button>
-                {!globalSession && (
+                {!authUser && (
                   <p className="mt-2 text-xs text-muted-foreground text-center">
                     로그인 후 모임을 만들 수 있습니다.
                   </p>
@@ -409,12 +393,12 @@ export default function HomePage() {
                 </FieldGroup>
                 <Button
                   onClick={handleJoinRoom}
-                  disabled={isJoining || !globalSession}
+                  disabled={isJoining || !authUser}
                   className="w-full mt-4"
                 >
                   {isJoining ? "참여 중..." : "모임 참여하기"}
                 </Button>
-                {!globalSession && (
+                {!authUser && (
                   <p className="mt-2 text-xs text-muted-foreground text-center">
                     로그인 후 모임에 참여할 수 있습니다.
                   </p>
@@ -430,7 +414,7 @@ export default function HomePage() {
           </CardContent>
         </Card>
 
-        {globalSession && (
+        {authUser && (
           <Card className="mt-4">
             <CardHeader>
               <CardTitle className="flex items-center gap-2 text-sm">

@@ -5,7 +5,9 @@ import {
   getMemosByRoom,
   getRoomLabels,
   getRoomParticipantsWithDateRanges,
+  verifyRoomMembership,
 } from "@/lib/db/queries"
+import { verifyAuthFromCookieHeader } from "@/lib/auth/verify"
 import { SOCKET_IO_PATH } from "@/lib/socket/constants"
 import {
   SOCKET_EVENTS,
@@ -13,6 +15,28 @@ import {
   roomChannel,
 } from "@/lib/socket/events"
 import { getIO, setIO } from "@/lib/socket/io"
+
+export interface AuthenticatedSocketData {
+  participantId: string
+}
+
+async function joinParticipantInbox(
+  io: SocketIOServer,
+  socket: import("socket.io").Socket,
+  participantId: string
+) {
+  socket.join(participantChannel(participantId))
+
+  try {
+    const unreadCount = await getInboxUnreadCount(participantId)
+    socket.emit(SOCKET_EVENTS.INBOX_UPDATED, {
+      unreadCount,
+      participantId,
+    })
+  } catch (error) {
+    console.error("Failed to send inbox snapshot:", error)
+  }
+}
 
 export function attachSocketIO(httpServer: HTTPServer): SocketIOServer {
   const existing = getIO()
@@ -23,9 +47,26 @@ export function attachSocketIO(httpServer: HTTPServer): SocketIOServer {
     addTrailingSlash: false,
   })
 
+  io.use(async (socket, next) => {
+    const payload = await verifyAuthFromCookieHeader(
+      socket.handshake.headers.cookie
+    )
+    if (!payload) {
+      return next(new Error("Unauthorized"))
+    }
+    ;(socket.data as AuthenticatedSocketData).participantId = payload.sub
+    next()
+  })
+
   io.on("connection", (socket) => {
+    const participantId = (socket.data as AuthenticatedSocketData).participantId
+    void joinParticipantInbox(io, socket, participantId)
+
     socket.on(SOCKET_EVENTS.JOIN_ROOM, async (roomId: unknown) => {
       if (typeof roomId !== "string" || !roomId) return
+
+      const membership = await verifyRoomMembership(roomId, participantId)
+      if (!membership) return
 
       socket.join(roomChannel(roomId))
 
@@ -40,22 +81,6 @@ export function attachSocketIO(httpServer: HTTPServer): SocketIOServer {
         socket.emit(SOCKET_EVENTS.LABELS_UPDATED, { labels })
       } catch (error) {
         console.error("Failed to send room snapshot:", error)
-      }
-    })
-
-    socket.on(SOCKET_EVENTS.JOIN_PARTICIPANT, async (participantId: unknown) => {
-      if (typeof participantId !== "string" || !participantId) return
-
-      socket.join(participantChannel(participantId))
-
-      try {
-        const unreadCount = await getInboxUnreadCount(participantId)
-        socket.emit(SOCKET_EVENTS.INBOX_UPDATED, {
-          unreadCount,
-          participantId,
-        })
-      } catch (error) {
-        console.error("Failed to send inbox snapshot:", error)
       }
     })
   })

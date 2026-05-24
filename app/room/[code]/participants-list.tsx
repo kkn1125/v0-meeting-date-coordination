@@ -1,6 +1,7 @@
 "use client"
 
 import { useState } from "react"
+import { apiFetch } from "@/lib/api-client"
 import type { ParticipantWithDateRanges } from "@/lib/types"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
@@ -50,9 +51,8 @@ export function ParticipantsList({
     try {
       const endpoint = participant.deleted_at ? "/api/participants/restore" : "/api/participants/kick"
 
-      const res = await fetch(endpoint, {
+      const res = await apiFetch(endpoint, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           participantId: participant.id,
           roomId,

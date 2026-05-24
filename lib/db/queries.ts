@@ -321,6 +321,30 @@ export async function insertDateRange(data: {
   `
 }
 
+export async function getDateRangeById(id: string): Promise<DateRange | null> {
+  const rows = await sql<DateRange[]>`
+    SELECT
+      id,
+      participant_id,
+      room_id,
+      start_date::text AS start_date,
+      end_date::text AS end_date,
+      is_available,
+      label_id,
+      created_at
+    FROM date_ranges
+    WHERE id = ${id}
+    LIMIT 1
+  `
+  const range = rows[0]
+  if (!range) return null
+  return {
+    ...range,
+    start_date: toISODateString(range.start_date),
+    end_date: toISODateString(range.end_date),
+  }
+}
+
 export async function deleteDateRange(id: string): Promise<string | null> {
   const rows = await sql<{ room_id: string }[]>`
     DELETE FROM date_ranges

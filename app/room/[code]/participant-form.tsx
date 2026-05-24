@@ -1,6 +1,7 @@
 "use client"
 
 import { useState } from "react"
+import { apiFetch } from "@/lib/api-client"
 import type { ParticipantWithDateRanges } from "@/lib/types"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -28,10 +29,9 @@ export function ParticipantForm({ roomId, onParticipantCreated }: ParticipantFor
     setError("")
 
     try {
-      const res = await fetch(`/api/rooms/${roomId}/join`, {
+      const res = await apiFetch(`/api/rooms/${roomId}/join`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name: name.trim() }),
+        body: JSON.stringify({}),
       })
 
       const data = await res.json()

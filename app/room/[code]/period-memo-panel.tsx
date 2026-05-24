@@ -2,6 +2,7 @@
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { apiFetch } from "@/lib/api-client";
 import type { RangeSpanWithKeys } from "@/lib/calendar-ranges";
 import { requestInboxRefresh } from "@/lib/inbox-events";
 import { parseMemoContent } from "@/lib/memo-content";
@@ -132,11 +133,9 @@ export function PeriodMemoPanel({
     setIsSubmitting(true);
     try {
       if (editingMemoId) {
-        const res = await fetch(`/api/rooms/${roomId}/memos/${editingMemoId}`, {
+        const res = await apiFetch(`/api/rooms/${roomId}/memos/${editingMemoId}`, {
           method: "PATCH",
-          headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            authorParticipantId: currentParticipantId,
             content,
             mentionParticipantIds: mentionIds,
           }),
@@ -147,11 +146,9 @@ export function PeriodMemoPanel({
           memos.map((m) => (m.id === editingMemoId ? data.memo : m)),
         );
       } else {
-        const res = await fetch(`/api/rooms/${roomId}/memos`, {
+        const res = await apiFetch(`/api/rooms/${roomId}/memos`, {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            authorParticipantId: currentParticipantId,
             dateRangeId: range.rangeId,
             content,
             mentionParticipantIds: mentionIds,
@@ -174,10 +171,9 @@ export function PeriodMemoPanel({
     if (!currentParticipantId) return;
     setIsSubmitting(true);
     try {
-      const res = await fetch(`/api/rooms/${roomId}/memos/${memoId}`, {
+      const res = await apiFetch(`/api/rooms/${roomId}/memos/${memoId}`, {
         method: "DELETE",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ participantId: currentParticipantId }),
+        body: JSON.stringify({}),
       });
       if (!res.ok) {
         const data = await res.json();
@@ -203,11 +199,9 @@ export function PeriodMemoPanel({
     if (!currentParticipantId || labelLocked) return;
     setIsLabelSaving(true);
     try {
-      const res = await fetch(`/api/date-ranges/${range.rangeId}`, {
+      const res = await apiFetch(`/api/date-ranges/${range.rangeId}`, {
         method: "PATCH",
-        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          participantId: currentParticipantId,
           roomId,
           labelId: nextLabelId,
         }),

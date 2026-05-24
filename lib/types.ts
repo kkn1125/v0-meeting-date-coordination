@@ -43,17 +43,9 @@ export interface ParticipantWithDateRanges extends Participant {
   date_ranges: DateRange[]
 }
 
-export interface SessionPayload {
-  participantId: string
-  roomId: string
+export interface AuthUser {
+  id: string
   name: string
-  isHost: boolean
-  expiresAt: number
-}
-
-export interface GlobalSessionPayload {
-  name: string
-  expiresAt: number
 }
 
 export interface MemoMention {

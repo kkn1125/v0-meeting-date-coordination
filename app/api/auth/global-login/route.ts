@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
 import { findParticipantByNameWithPassword } from "@/lib/db/queries"
-import { verifyPassword, createGlobalSession } from "@/lib/auth"
+import { verifyPassword, setAuthCookieOnResponse } from "@/lib/auth"
 
 export async function POST(request: NextRequest) {
   try {
@@ -39,12 +39,12 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    const session = createGlobalSession(participant.name)
-
-    return NextResponse.json({
+    const response = NextResponse.json({
       success: true,
-      session,
+      user: { id: participant.id, name: participant.name },
     })
+
+    return setAuthCookieOnResponse(response, participant.id)
   } catch (error) {
     console.error("Global login error:", error)
     return NextResponse.json(

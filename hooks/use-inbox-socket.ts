@@ -6,7 +6,7 @@ import { SOCKET_BOOTSTRAP_PATH, SOCKET_IO_PATH } from "@/lib/socket/constants"
 import { SOCKET_EVENTS } from "@/lib/socket/events"
 
 async function ensureSocketServer() {
-  const res = await fetch(SOCKET_BOOTSTRAP_PATH)
+  const res = await fetch(SOCKET_BOOTSTRAP_PATH, { credentials: "include" })
   if (!res.ok) {
     throw new Error("Failed to initialize socket server")
   }
@@ -36,12 +36,8 @@ export function useInboxSocket(
         socket = io({
           path: SOCKET_IO_PATH,
           addTrailingSlash: false,
+          withCredentials: true,
         })
-
-        const joinParticipant = () => {
-          const pid = participantIdRef.current
-          if (pid) socket?.emit(SOCKET_EVENTS.JOIN_PARTICIPANT, pid)
-        }
 
         const handleInboxUpdated = (data: {
           unreadCount: number
@@ -51,12 +47,7 @@ export function useInboxSocket(
           callbackRef.current()
         }
 
-        socket.on("connect", joinParticipant)
         socket.on(SOCKET_EVENTS.INBOX_UPDATED, handleInboxUpdated)
-
-        if (socket.connected) {
-          joinParticipant()
-        }
       } catch (error) {
         console.error("Inbox socket connection error:", error)
       }
@@ -67,7 +58,6 @@ export function useInboxSocket(
     return () => {
       cancelled = true
       if (socket) {
-        socket.off("connect")
         socket.off(SOCKET_EVENTS.INBOX_UPDATED)
         socket.disconnect()
       }

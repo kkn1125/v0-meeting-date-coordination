@@ -12,15 +12,15 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover"
 import { ScrollArea } from "@/components/ui/scroll-area"
-import { getGlobalSessionFromStorage } from "@/lib/auth"
+import { apiFetch } from "@/lib/api-client"
 import { INBOX_REFRESH_EVENT } from "@/lib/inbox-events"
-import type { InboxNotification } from "@/lib/types"
+import type { AuthUser, InboxNotification } from "@/lib/types"
 import { useInboxSocket } from "@/hooks/use-inbox-socket"
 import { cn } from "@/lib/utils"
 
 export function NotificationBell() {
   const router = useRouter()
-  const [sessionName, setSessionName] = useState<string | null>(null)
+  const [authUser, setAuthUser] = useState<AuthUser | null>(null)
   const [participantId, setParticipantId] = useState<string | null>(null)
   const [notifications, setNotifications] = useState<InboxNotification[]>([])
   const [unreadCount, setUnreadCount] = useState(0)
@@ -28,17 +28,23 @@ export function NotificationBell() {
   const [isLoading, setIsLoading] = useState(false)
 
   useEffect(() => {
-    const session = getGlobalSessionFromStorage()
-    setSessionName(session?.name ?? null)
+    void (async () => {
+      try {
+        const res = await apiFetch("/api/auth/me")
+        if (!res.ok) return
+        const data = await res.json()
+        if (data.user) setAuthUser(data.user)
+      } catch (error) {
+        console.error(error)
+      }
+    })()
   }, [])
 
   const loadInbox = useCallback(async () => {
-    if (!sessionName) return
+    if (!authUser) return
     setIsLoading(true)
     try {
-      const res = await fetch(
-        `/api/inbox?participantName=${encodeURIComponent(sessionName)}`
-      )
+      const res = await apiFetch("/api/inbox")
       const data = await res.json()
       if (!res.ok) throw new Error(data.error)
       setNotifications(data.notifications ?? [])
@@ -49,7 +55,7 @@ export function NotificationBell() {
     } finally {
       setIsLoading(false)
     }
-  }, [sessionName])
+  }, [authUser])
 
   useEffect(() => {
     void loadInbox()
@@ -65,15 +71,12 @@ export function NotificationBell() {
 
   useInboxSocket(participantId, loadInbox)
 
-  if (!sessionName) return null
+  if (!authUser) return null
 
   const toggleRead = async (notification: InboxNotification) => {
-    if (!participantId) return
-    await fetch(`/api/inbox/${notification.id}`, {
+    await apiFetch(`/api/inbox/${notification.id}`, {
       method: "PATCH",
-      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        participantId,
         isRead: !notification.is_read,
       }),
     })
@@ -81,21 +84,17 @@ export function NotificationBell() {
   }
 
   const markAllRead = async () => {
-    if (!participantId) return
-    await fetch("/api/inbox/read-all", {
+    await apiFetch("/api/inbox/read-all", {
       method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ participantId }),
+      body: JSON.stringify({}),
     })
     void loadInbox()
   }
 
   const deleteNotification = async (id: string) => {
-    if (!participantId) return
-    await fetch(`/api/inbox/${id}`, {
+    await apiFetch(`/api/inbox/${id}`, {
       method: "DELETE",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ participantId }),
+      body: JSON.stringify({}),
     })
     void loadInbox()
   }

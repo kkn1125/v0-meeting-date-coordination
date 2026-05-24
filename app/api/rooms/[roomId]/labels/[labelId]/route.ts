@@ -3,12 +3,12 @@ import {
   deleteRoomLabel,
   getRoomLabels,
   updateRoomLabel,
-  verifyRoomMembership,
 } from "@/lib/db/queries"
 import {
   broadcastRoomLabels,
   broadcastRoomParticipants,
 } from "@/lib/socket/broadcast"
+import { requireRoomMember, isAuthError } from "@/lib/auth"
 
 export async function PATCH(
   request: NextRequest,
@@ -16,16 +16,10 @@ export async function PATCH(
 ) {
   try {
     const { roomId, labelId } = await params
-    const { participantId, name, isValid } = await request.json()
+    const auth = await requireRoomMember(request, roomId)
+    if (isAuthError(auth)) return auth
 
-    if (!participantId) {
-      return NextResponse.json({ error: "필수 필드가 누락되었습니다." }, { status: 400 })
-    }
-
-    const membership = await verifyRoomMembership(roomId, participantId)
-    if (!membership) {
-      return NextResponse.json({ error: "방 참여 권한이 없습니다." }, { status: 403 })
-    }
+    const { name, isValid } = await request.json()
 
     const label = await updateRoomLabel({
       roomId,
@@ -55,13 +49,14 @@ export async function DELETE(
 ) {
   try {
     const { roomId, labelId } = await params
-    const { participantId } = await request.json()
+    const auth = await requireRoomMember(request, roomId)
+    if (isAuthError(auth)) return auth
 
-    if (!participantId) {
-      return NextResponse.json({ error: "필수 필드가 누락되었습니다." }, { status: 400 })
-    }
-
-    const deleted = await deleteRoomLabel({ roomId, labelId, participantId })
+    const deleted = await deleteRoomLabel({
+      roomId,
+      labelId,
+      participantId: auth.participantId,
+    })
 
     if (!deleted) {
       return NextResponse.json({ error: "라벨을 찾을 수 없습니다." }, { status: 404 })

@@ -1,5 +1,10 @@
 import { NextRequest, NextResponse } from "next/server"
-import { deleteDateRange, updateDateRangeLabel } from "@/lib/db/queries"
+import {
+  deleteDateRange,
+  getDateRangeById,
+  updateDateRangeLabel,
+} from "@/lib/db/queries"
+import { requireRoomMember, isAuthError } from "@/lib/auth"
 import { broadcastRoomParticipants } from "@/lib/socket/broadcast"
 
 export async function PATCH(
@@ -8,16 +13,19 @@ export async function PATCH(
 ) {
   try {
     const { id } = await params
-    const { participantId, roomId, labelId } = await request.json()
+    const { roomId, labelId } = await request.json()
 
-    if (!participantId || !roomId) {
+    if (!roomId) {
       return NextResponse.json({ error: "필수 필드가 누락되었습니다." }, { status: 400 })
     }
+
+    const auth = await requireRoomMember(request, roomId)
+    if (isAuthError(auth)) return auth
 
     const range = await updateDateRangeLabel({
       roomId,
       dateRangeId: id,
-      participantId,
+      participantId: auth.participantId,
       labelId: labelId ?? null,
     })
 
@@ -49,11 +57,23 @@ export async function PATCH(
 }
 
 export async function DELETE(
-  _request: NextRequest,
+  request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const { id } = await params
+    const existing = await getDateRangeById(id)
+    if (!existing) {
+      return NextResponse.json({ error: "기간을 찾을 수 없습니다." }, { status: 404 })
+    }
+
+    const auth = await requireRoomMember(request, existing.room_id)
+    if (isAuthError(auth)) return auth
+
+    if (existing.participant_id !== auth.participantId) {
+      return NextResponse.json({ error: "권한이 없습니다." }, { status: 403 })
+    }
+
     const roomId = await deleteDateRange(id)
 
     if (roomId) {

@@ -1,6 +1,7 @@
 import type { NextApiRequest, NextApiResponse } from "next"
 import type { Server as HTTPServer } from "http"
 import type { Socket } from "net"
+import { isValidSocketNotifyRequest } from "@/lib/auth/notify"
 import { attachSocketIO } from "@/lib/socket/init"
 import {
   broadcastInboxMany,
@@ -30,6 +31,10 @@ export default async function notifyHandler(
   if (req.method !== "POST") {
     res.setHeader("Allow", "POST")
     return res.status(405).json({ error: "Method not allowed" })
+  }
+
+  if (!isValidSocketNotifyRequest(req.headers["x-socket-notify-secret"])) {
+    return res.status(401).json({ error: "Unauthorized" })
   }
 
   attachSocketIO(res.socket.server)

@@ -1,16 +1,15 @@
 import { NextRequest, NextResponse } from "next/server"
 import { markAllInboxRead } from "@/lib/db/queries"
+import { requireAuth, isAuthError } from "@/lib/auth"
 import { notifyInboxUpdated } from "@/lib/socket/notify-relay"
 
 export async function PATCH(request: NextRequest) {
   try {
-    const { participantId } = await request.json()
-    if (!participantId) {
-      return NextResponse.json({ error: "participantId가 필요합니다." }, { status: 400 })
-    }
+    const auth = await requireAuth(request)
+    if (isAuthError(auth)) return auth
 
-    await markAllInboxRead(participantId)
-    await notifyInboxUpdated([participantId], request)
+    await markAllInboxRead(auth.participantId)
+    await notifyInboxUpdated([auth.participantId], request)
 
     return NextResponse.json({ success: true })
   } catch (error) {

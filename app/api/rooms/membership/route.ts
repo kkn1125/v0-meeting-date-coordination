@@ -1,18 +1,19 @@
 import { NextRequest, NextResponse } from "next/server"
 import { getMembershipStatus } from "@/lib/db/queries"
+import { requireAuth, isAuthError } from "@/lib/auth"
 
 export async function POST(request: NextRequest) {
   try {
-    const { roomId, name } = await request.json()
+    const auth = await requireAuth(request)
+    if (isAuthError(auth)) return auth
 
-    if (!roomId || !name?.trim()) {
-      return NextResponse.json(
-        { error: "roomId와 이름이 필요합니다." },
-        { status: 400 }
-      )
+    const { roomId } = await request.json()
+
+    if (!roomId) {
+      return NextResponse.json({ error: "roomId가 필요합니다." }, { status: 400 })
     }
 
-    const status = await getMembershipStatus(roomId, name.trim())
+    const status = await getMembershipStatus(roomId, auth.name)
     return NextResponse.json({ status })
   } catch (error) {
     console.error("Room membership error:", error)

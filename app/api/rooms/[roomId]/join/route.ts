@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
 import { joinRoom } from "@/lib/db/queries"
+import { requireAuth, isAuthError } from "@/lib/auth"
 import { broadcastRoomParticipants } from "@/lib/socket/broadcast"
 
 export async function POST(
@@ -7,14 +8,12 @@ export async function POST(
   { params }: { params: Promise<{ roomId: string }> }
 ) {
   try {
+    const auth = await requireAuth(request)
+    if (isAuthError(auth)) return auth
+
     const { roomId } = await params
-    const { name } = await request.json()
 
-    if (!name?.trim()) {
-      return NextResponse.json({ error: "이름이 필요합니다." }, { status: 400 })
-    }
-
-    const participant = await joinRoom(roomId, name.trim())
+    const participant = await joinRoom(roomId, auth.name)
     await broadcastRoomParticipants(roomId)
 
     return NextResponse.json({ participant })

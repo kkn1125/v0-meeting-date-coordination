@@ -1,6 +1,10 @@
 import { NextRequest, NextResponse } from "next/server"
-import { findParticipantByNameWithPassword, createParticipant } from "@/lib/db/queries"
-import { hashPassword } from "@/lib/auth"
+import {
+  findParticipantByNameWithPassword,
+  createParticipant,
+  findParticipantByName,
+} from "@/lib/db/queries"
+import { hashPassword, setAuthCookieOnResponse } from "@/lib/auth"
 
 export async function POST(request: NextRequest) {
   try {
@@ -33,10 +37,20 @@ export async function POST(request: NextRequest) {
     const passwordHash = await hashPassword(password)
     await createParticipant(trimmedName, passwordHash)
 
-    return NextResponse.json({
+    const participant = await findParticipantByName(trimmedName)
+    if (!participant) {
+      return NextResponse.json(
+        { error: "회원가입에 실패했습니다." },
+        { status: 500 }
+      )
+    }
+
+    const response = NextResponse.json({
       success: true,
-      name: trimmedName,
+      user: { id: participant.id, name: participant.name },
     })
+
+    return setAuthCookieOnResponse(response, participant.id)
   } catch (error) {
     console.error("Signup error:", error)
     return NextResponse.json(

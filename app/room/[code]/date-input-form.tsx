@@ -10,6 +10,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { apiFetch } from "@/lib/api-client";
 import type { ParticipantWithDateRanges, RoomLabel } from "@/lib/types";
 import { LabelSelectField } from "./label-select-field";
 import { cn } from "@/lib/utils";
@@ -55,11 +56,9 @@ export function DateInputForm({
         ? format(selectedRange.to, "yyyy-MM-dd")
         : startDate;
 
-      const res = await fetch("/api/date-ranges", {
+      const res = await apiFetch("/api/date-ranges", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          participantId: participant.id,
           roomId,
           startDate,
           endDate,
@@ -82,7 +81,7 @@ export function DateInputForm({
 
   const handleDeleteDateRange = async (dateRangeId: string) => {
     try {
-      const res = await fetch(`/api/date-ranges/${dateRangeId}`, {
+      const res = await apiFetch(`/api/date-ranges/${dateRangeId}`, {
         method: "DELETE",
       });
       if (!res.ok) throw new Error("Failed to delete date range");
