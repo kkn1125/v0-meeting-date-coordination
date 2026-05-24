@@ -3,6 +3,7 @@ import { Geist, Geist_Mono } from 'next/font/google'
 import { Analytics } from '@vercel/analytics/next'
 import './globals.css'
 import packageJson from '../package.json'
+import { NotificationBell } from "@/components/notification-bell"
 
 const _geist = Geist({ subsets: ["latin"] });
 const _geistMono = Geist_Mono({ subsets: ["latin"] });
@@ -43,6 +44,7 @@ export default function RootLayout({
     <html lang="ko">
       <body className="font-sans antialiased">
         {children}
+        <NotificationBell />
         <div className="fixed bottom-3 left-3 z-50 pointer-events-none select-none">
           <span className="rounded-md border bg-background/80 px-2 py-1 text-[11px] text-muted-foreground backdrop-blur">
             v{appVersion}

@@ -1,10 +1,10 @@
 "use client"
 
-import { useEffect, useState, useCallback } from "react"
-import { useRouter } from "next/navigation"
-import { createClient } from "@/lib/supabase/client"
-import type { Room, ParticipantWithDateRanges } from "@/lib/types"
+import { useEffect, useState, useCallback, useMemo } from "react"
+import { useRouter, useSearchParams } from "next/navigation"
+import type { Room, ParticipantWithDateRanges, Memo } from "@/lib/types"
 import { getSessionFromStorage, getGlobalSessionFromStorage, clearSessionFromStorage } from "@/lib/auth"
+import { useRoomSocket } from "@/hooks/use-room-socket"
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -26,95 +26,62 @@ import { DateInputForm } from "./date-input-form"
 interface RoomClientProps {
   room: Room
   initialParticipants: ParticipantWithDateRanges[]
+  initialMemos?: Memo[]
 }
 
-export function RoomClient({ room, initialParticipants }: RoomClientProps) {
+export function RoomClient({
+  room,
+  initialParticipants,
+  initialMemos = [],
+}: RoomClientProps) {
   const [participants, setParticipants] = useState<ParticipantWithDateRanges[]>(initialParticipants)
+  const [memos, setMemos] = useState<Memo[]>(initialMemos)
   const [currentParticipant, setCurrentParticipant] = useState<ParticipantWithDateRanges | null>(null)
   const [isMembershipInactive, setIsMembershipInactive] = useState(false)
   const [isLoginRequired, setIsLoginRequired] = useState(false)
-  const supabase = createClient()
   const router = useRouter()
+  const searchParams = useSearchParams()
 
-  const fetchParticipants = useCallback(async () => {
-    const { data, error } = await supabase
-      .from("room_participants")
-      .select(
-        `
-          is_host,
-          is_active,
-          participant:participants (
-            id,
-            name,
-            password_hash,
-            created_at
-          )
-        `
-      )
-      .eq("room_id", room.id)
-      .order("created_at", { ascending: true })
+  const initialDateRangeId = searchParams?.get("dateRangeId") ?? undefined
+  const initialMemoId = searchParams?.get("memoId") ?? undefined
 
-    if (error) {
-      console.error(error)
-      return
-    }
-
-    if (data) {
-      const base = (data ?? [])
-        .filter((rp: any) => rp.participant)
-        .map((rp: any) => ({
-          id: rp.participant.id as string,
-          room_id: room.id as string,
-          name: rp.participant.name as string,
-          password_hash: (rp.participant.password_hash as string) ?? null,
-          is_host: Boolean(rp.is_host),
-          deleted_at: rp.is_active ? null : new Date().toISOString(),
-          created_at: (rp.participant.created_at as string) ?? new Date().toISOString(),
-          date_ranges: [] as any[],
-        }))
-
-      const participantIds = base.map((p) => p.id)
-
-      if (participantIds.length === 0) {
-        setParticipants(base)
-        return
-      }
-
-      // 이 방에 속한 date_ranges 를 직접 조회
-      const { data: ranges, error: rangesError } = await supabase
-        .from("date_ranges")
-        .select("*")
-        .eq("room_id", room.id)
-        .in("participant_id", participantIds)
-
-      if (rangesError) {
-        console.error(rangesError)
-        setParticipants(base)
-        return
-      }
-
-      const rangesByParticipant = new Map<string, any[]>()
-      ;(ranges ?? []).forEach((r: any) => {
-        const arr = rangesByParticipant.get(r.participant_id) ?? []
-        arr.push(r)
-        rangesByParticipant.set(r.participant_id, arr)
-      })
-
-      const mapped = base.map((p) => ({
-        ...p,
-        date_ranges: rangesByParticipant.get(p.id) ?? [],
-      }))
-
+  const applyParticipantsUpdate = useCallback(
+    (mapped: ParticipantWithDateRanges[]) => {
       setParticipants(mapped)
+      setCurrentParticipant((prev) => {
+        if (!prev) return prev
+        return mapped.find((p) => p.id === prev.id) ?? prev
+      })
+    },
+    []
+  )
 
-      if (currentParticipant) {
-        const updated = mapped.find((p) => p.id === currentParticipant.id)
-        if (updated) {
-          setCurrentParticipant(updated)
-        }
+  const applyMemosUpdate = useCallback((updatedMemos: Memo[], dateRangeId?: string) => {
+    if (dateRangeId) {
+      setMemos((prev) => {
+        const others = prev.filter((m) => m.date_range_id !== dateRangeId)
+        const filtered = updatedMemos.filter((m) => m.date_range_id === dateRangeId)
+        return [...others, ...filtered]
+      })
+    } else {
+      setMemos(updatedMemos)
+    }
+  }, [])
+
+  useRoomSocket(room.id, applyParticipantsUpdate, applyMemosUpdate)
+
+  useEffect(() => {
+    const loadMemos = async () => {
+      try {
+        const res = await fetch(`/api/rooms/${room.id}/memos`)
+        const data = await res.json()
+        if (res.ok) setMemos(data.memos ?? [])
+      } catch (error) {
+        console.error(error)
       }
     }
-  }, [supabase, room.id, currentParticipant])
+    void loadMemos()
+  }, [room.id])
 
   useEffect(() => {
     const roomSession = getSessionFromStorage(room.id)
@@ -135,7 +102,6 @@ export function RoomClient({ room, initialParticipants }: RoomClientProps) {
         setCurrentParticipant(existingByName)
       }
 
-      // 멤버십 상태 확인 및 필요 시 자동 참여자 등록
       ;(async () => {
         try {
           const res = await fetch("/api/rooms/membership", {
@@ -147,83 +113,18 @@ export function RoomClient({ room, initialParticipants }: RoomClientProps) {
           if (!res.ok) return
 
           if (data.status === "inactive") {
-            // 이 방에서 비활성화된 사용자는 호스트만 복구 가능
             setIsMembershipInactive(true)
             return
           }
 
           if (data.status === "none") {
-            // 아직 이 방의 참여자로 등록되지 않은 글로벌 사용자면 자동으로 참여자로 등록
             try {
-              const trimmedName = globalSession.name.trim()
-              if (!trimmedName) return
-
-              // 1) 글로벌 참가자(사용자) 조회 또는 생성
-              const { data: existingUser, error: existingUserError } = await supabase
-                .from("participants")
-                .select("id,name,password_hash,created_at")
-                .eq("name", trimmedName)
-                .limit(1)
-                .single()
-
-              let participantId: string | null = existingUser?.id ?? null
-
-              if (existingUserError && (existingUserError as any).code !== "PGRST116") {
-                throw existingUserError
-              }
-
-              if (!participantId) {
-                const { data: newUser, error: insertUserError } = await supabase
-                  .from("participants")
-                  .insert({ name: trimmedName })
-                  .select("id,name,password_hash,created_at")
-                  .single()
-
-                if (insertUserError || !newUser) {
-                  throw insertUserError
-                }
-
-                participantId = newUser.id
-              }
-
-              if (!participantId) return
-
-              // 2) room_participants 링크 생성 (이미 있으면 활성화)
-              const { data: existingLink, error: linkError } = await supabase
-                .from("room_participants")
-                .select("id,is_active")
-                .eq("room_id", room.id)
-                .eq("participant_id", participantId)
-                .limit(1)
-                .single()
-
-              if (linkError && (linkError as any).code !== "PGRST116") {
-                throw linkError
-              }
-
-              if (!existingLink) {
-                const { error: insertLinkError } = await supabase
-                  .from("room_participants")
-                  .insert({
-                    room_id: room.id,
-                    participant_id: participantId,
-                    is_host: false,
-                    is_active: true,
-                  })
-
-                if (insertLinkError) throw insertLinkError
-              } else if (!existingLink.is_active) {
-                const { error: restoreError } = await supabase
-                  .from("room_participants")
-                  .update({ is_active: true })
-                  .eq("room_id", room.id)
-                  .eq("participant_id", participantId)
-
-                if (restoreError) throw restoreError
-              }
-
-              // 3) 최신 참여자 목록으로 갱신하고, 본인을 현재 참여자로 선택
-              await fetchParticipants()
+              const joinRes = await fetch(`/api/rooms/${room.id}/join`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ name: globalSession.name.trim() }),
+              })
+              if (!joinRes.ok) throw new Error("Auto-join failed")
             } catch (e) {
               console.error("Auto-join error:", e)
             }
@@ -235,56 +136,25 @@ export function RoomClient({ room, initialParticipants }: RoomClientProps) {
       return
     }
 
-    // 방 세션도, 글로벌 세션도 없으면 로그인 필요 안내
     setIsLoginRequired(true)
   }, [room.id, initialParticipants])
-
-  useEffect(() => {
-    const participantsChannel = supabase
-      .channel("room-participants-changes")
-      .on(
-        "postgres_changes",
-        {
-          event: "*",
-          schema: "public",
-          table: "room_participants",
-          filter: `room_id=eq.${room.id}`,
-        },
-        () => {
-          fetchParticipants()
-        }
-      )
-      .subscribe()
-
-    const dateRangesChannel = supabase
-      .channel("date-ranges-changes")
-      .on(
-        "postgres_changes",
-        {
-          event: "*",
-          schema: "public",
-          table: "date_ranges",
-        },
-        () => {
-          fetchParticipants()
-        }
-      )
-      .subscribe()
-
-    return () => {
-      supabase.removeChannel(participantsChannel)
-      supabase.removeChannel(dateRangesChannel)
-    }
-  }, [supabase, room.id, fetchParticipants])
 
   const handleLogout = () => {
     clearSessionFromStorage(room.id)
     setCurrentParticipant(null)
   }
 
-  const handleDateRangeAdded = () => {
-    fetchParticipants()
-  }
+  const mentionedRangeIds = useMemo(() => {
+    if (!currentParticipant) return new Set<string>()
+    const ids = new Set<string>()
+    memos.forEach((memo) => {
+      const mentioned = (memo.mentions ?? []).some(
+        (m) => m.mentioned_participant_id === currentParticipant.id
+      )
+      if (mentioned) ids.add(memo.date_range_id)
+    })
+    return ids
+  }, [memos, currentParticipant])
 
   return (
     <>
@@ -295,8 +165,16 @@ export function RoomClient({ room, initialParticipants }: RoomClientProps) {
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
             <div className="lg:col-span-2 space-y-6">
               <AvailabilityCalendar
+                roomId={room.id}
                 participants={participants}
+                memos={memos}
                 currentParticipantId={currentParticipant?.id}
+                currentParticipantIsHost={!!currentParticipant?.is_host}
+                mentionedRangeIds={mentionedRangeIds}
+                initialDateRangeId={initialDateRangeId}
+                initialMemoId={initialMemoId}
+                onMemosChange={setMemos}
+                onLoginRequired={() => setIsLoginRequired(true)}
               />
             </div>
 
@@ -349,10 +227,7 @@ export function RoomClient({ room, initialParticipants }: RoomClientProps) {
               </Card>
 
               {currentParticipant && (
-                <DateInputForm
-                  participant={currentParticipant}
-                  onDateRangeAdded={handleDateRangeAdded}
-                />
+                <DateInputForm participant={currentParticipant} />
               )}
 
               <ParticipantsList
@@ -361,14 +236,12 @@ export function RoomClient({ room, initialParticipants }: RoomClientProps) {
                 roomId={room.id}
                 currentParticipantId={currentParticipant?.id}
                 currentParticipantIsHost={!!currentParticipant?.is_host}
-                onParticipantsChange={fetchParticipants}
               />
             </div>
           </div>
         </div>
       </main>
 
-      {/* 비활성 멤버십 안내 모달 */}
       <AlertDialog open={isMembershipInactive}>
         <AlertDialogContent>
           <AlertDialogHeader>
@@ -390,7 +263,6 @@ export function RoomClient({ room, initialParticipants }: RoomClientProps) {
         </AlertDialogContent>
       </AlertDialog>
 
-      {/* 로그인 필요 안내 모달 */}
       <AlertDialog open={isLoginRequired}>
         <AlertDialogContent>
           <AlertDialogHeader>

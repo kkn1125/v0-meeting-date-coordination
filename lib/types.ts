@@ -42,3 +42,50 @@ export interface GlobalSessionPayload {
   name: string
   expiresAt: number
 }
+
+export interface MemoMention {
+  id: string
+  memo_id: string
+  mentioned_participant_id: string
+  mentioned_name?: string
+  created_at: string
+}
+
+export interface Memo {
+  id: string
+  room_id: string
+  date_range_id: string
+  author_participant_id: string
+  content: string
+  created_at: string
+  updated_at: string
+  author_name?: string
+  mentions?: MemoMention[]
+}
+
+export interface InboxNotification {
+  id: string
+  recipient_participant_id: string
+  room_id: string
+  date_range_id: string
+  memo_id: string
+  mention_id: string
+  is_read: boolean
+  created_at: string
+  room_name?: string
+  room_code?: string
+  start_date?: string
+  end_date?: string
+  memo_preview?: string
+  mentioner_name?: string
+}
+
+export interface RangeSpan {
+  rangeId: string
+  participantId: string
+  participantName: string
+  startDate: string
+  endDate: string
+  isAvailable: boolean
+  dateRange: DateRange
+}

@@ -1,0 +1,67 @@
+import { NextRequest, NextResponse } from "next/server"
+import {
+  createRoom,
+  createRoomParticipantLink,
+  createParticipant,
+  findParticipantByName,
+  getRoomByCode,
+  updateRoomCreator,
+} from "@/lib/db/queries"
+
+function generateRoomCode(): string {
+  const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
+  let code = ""
+  for (let i = 0; i < 6; i++) {
+    code += chars.charAt(Math.floor(Math.random() * chars.length))
+  }
+  return code
+}
+
+export async function GET(request: NextRequest) {
+  try {
+    const code = request.nextUrl.searchParams.get("code")
+    if (!code) {
+      return NextResponse.json({ error: "code가 필요합니다." }, { status: 400 })
+    }
+
+    const room = await getRoomByCode(code)
+    if (!room) {
+      return NextResponse.json({ error: "존재하지 않는 모임입니다." }, { status: 404 })
+    }
+
+    return NextResponse.json({ room })
+  } catch (error) {
+    console.error("Get room error:", error)
+    return NextResponse.json({ error: "모임 조회에 실패했습니다." }, { status: 500 })
+  }
+}
+
+export async function POST(request: NextRequest) {
+  try {
+    const { name, hostName } = await request.json()
+
+    if (!name?.trim()) {
+      return NextResponse.json({ error: "모임 이름이 필요합니다." }, { status: 400 })
+    }
+
+    if (!hostName?.trim()) {
+      return NextResponse.json({ error: "호스트 이름이 필요합니다." }, { status: 400 })
+    }
+
+    const code = generateRoomCode()
+    const room = await createRoom(name.trim(), code)
+
+    let participant = await findParticipantByName(hostName.trim())
+    if (!participant) {
+      participant = await createParticipant(hostName.trim())
+    }
+
+    await createRoomParticipantLink(room.id, participant.id, true)
+    await updateRoomCreator(room.id, participant.id)
+
+    return NextResponse.json({ room })
+  } catch (error) {
+    console.error("Create room error:", error)
+    return NextResponse.json({ error: "모임 생성에 실패했습니다." }, { status: 500 })
+  }
+}

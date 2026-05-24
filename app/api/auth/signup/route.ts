@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
-import { createClient } from "@/lib/supabase/server"
-import { hashPassword, createSession } from "@/lib/auth"
+import { findParticipantByNameWithPassword, createParticipant } from "@/lib/db/queries"
+import { hashPassword } from "@/lib/auth"
 
 export async function POST(request: NextRequest) {
   try {
@@ -20,21 +20,8 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    const supabase = await createClient()
     const trimmedName = name.trim()
-
-    // Check if name already exists globally
-    const { data: existingUser, error: checkError } = await supabase
-      .from("participants")
-      .select("id")
-      .eq("name", trimmedName)
-      .not("password_hash", "is", null)
-      .limit(1)
-      .single()
-
-    if (checkError && checkError.code !== "PGRST116") {
-      throw checkError
-    }
+    const existingUser = await findParticipantByNameWithPassword(trimmedName)
 
     if (existingUser) {
       return NextResponse.json(
@@ -44,10 +31,10 @@ export async function POST(request: NextRequest) {
     }
 
     const passwordHash = await hashPassword(password)
+    await createParticipant(trimmedName, passwordHash)
 
     return NextResponse.json({
       success: true,
-      passwordHash,
       name: trimmedName,
     })
   } catch (error) {

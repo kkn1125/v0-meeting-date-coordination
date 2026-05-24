@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server"
-import { createClient } from "@/lib/supabase/server"
+import { findParticipantByNameWithPassword } from "@/lib/db/queries"
 import { verifyPassword, createGlobalSession } from "@/lib/auth"
 
 export async function POST(request: NextRequest) {
@@ -13,18 +13,10 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    const supabase = await createClient()
     const trimmedName = name.trim()
+    const participant = await findParticipantByNameWithPassword(trimmedName)
 
-    const { data: participant, error } = await supabase
-      .from("participants")
-      .select("*")
-      .eq("name", trimmedName)
-      .not("password_hash", "is", null)
-      .limit(1)
-      .single()
-
-    if (error || !participant) {
+    if (!participant) {
       return NextResponse.json(
         { error: "해당 이름으로 등록된 계정을 찾을 수 없습니다." },
         { status: 404 }
@@ -61,4 +53,3 @@ export async function POST(request: NextRequest) {
     )
   }
 }
-

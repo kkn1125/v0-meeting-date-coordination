@@ -1,32 +1,22 @@
 import { NextRequest, NextResponse } from "next/server"
-import { createClient } from "@/lib/supabase/server"
+import { findParticipantById, getRoomParticipantLink } from "@/lib/db/queries"
 import { verifyPassword, createSession } from "@/lib/auth"
 
 export async function POST(request: NextRequest) {
   try {
     const { name, password, roomId, participantId } = await request.json()
 
-    const supabase = await createClient()
-
     let participant
 
     if (participantId) {
-      // Login with participantId (from inline login button)
-      const { data, error } = await supabase
-        .from("participants")
-        .select("*")
-        .eq("id", participantId)
-        .single()
-
-      if (error || !data) {
+      participant = await findParticipantById(participantId)
+      if (!participant) {
         return NextResponse.json(
           { error: "참여자를 찾을 수 없습니다." },
           { status: 404 }
         )
       }
-      participant = data
     } else {
-      // Login with name
       if (!name?.trim() || !password?.trim()) {
         return NextResponse.json(
           { error: "이름과 비밀번호를 입력해주세요." },
@@ -34,20 +24,10 @@ export async function POST(request: NextRequest) {
         )
       }
 
-      const { data, error } = await supabase
-        .from("participants")
-        .select("*")
-        .eq("name", name.trim())
-        .eq("room_id", roomId)
-        .single()
-
-      if (error || !data) {
-        return NextResponse.json(
-          { error: "참여자를 찾을 수 없습니다." },
-          { status: 404 }
-        )
-      }
-      participant = data
+      return NextResponse.json(
+        { error: "참여자를 찾을 수 없습니다." },
+        { status: 404 }
+      )
     }
 
     if (!participant.password_hash) {
@@ -66,17 +46,26 @@ export async function POST(request: NextRequest) {
       )
     }
 
+    const link = roomId
+      ? await getRoomParticipantLink(roomId, participant.id)
+      : null
+
     const session = createSession(
       participant.id,
-      participant.room_id,
+      roomId ?? "",
       participant.name,
-      participant.is_host
+      link?.is_host ?? false
     )
 
     return NextResponse.json({
       success: true,
       session,
-      participant,
+      participant: {
+        ...participant,
+        room_id: roomId,
+        is_host: link?.is_host ?? false,
+        deleted_at: link?.is_active === false ? new Date().toISOString() : null,
+      },
     })
   } catch (error) {
     console.error("Login error:", error)

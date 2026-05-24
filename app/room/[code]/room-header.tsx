@@ -4,7 +4,7 @@ import { useState } from "react"
 import Link from "next/link"
 import type { Room } from "@/lib/types"
 import { Button } from "@/components/ui/button"
-import { CalendarDays, Copy, Check, Users, Home } from "lucide-react"
+import { CalendarDays, Copy, Check, Users, Home, Link2 } from "lucide-react"
 
 interface RoomHeaderProps {
   room: Room
@@ -12,27 +12,20 @@ interface RoomHeaderProps {
 }
 
 export function RoomHeader({ room, participantCount }: RoomHeaderProps) {
-  const [copied, setCopied] = useState(false)
+  const [copiedCode, setCopiedCode] = useState(false)
+  const [copiedUrl, setCopiedUrl] = useState(false)
 
   const handleCopyCode = async () => {
     await navigator.clipboard.writeText(room.code)
-    setCopied(true)
-    setTimeout(() => setCopied(false), 2000)
+    setCopiedCode(true)
+    setTimeout(() => setCopiedCode(false), 2000)
   }
 
-  const handleShare = async () => {
+  const handleCopyUrl = async () => {
     const url = `${window.location.origin}/room/${room.code}`
-    if (navigator.share) {
-      await navigator.share({
-        title: room.name,
-        text: `"${room.name}" 모임에 참여해주세요!`,
-        url,
-      })
-    } else {
-      await navigator.clipboard.writeText(url)
-      setCopied(true)
-      setTimeout(() => setCopied(false), 2000)
-    }
+    await navigator.clipboard.writeText(url)
+    setCopiedUrl(true)
+    setTimeout(() => setCopiedUrl(false), 2000)
   }
 
   return (
@@ -44,7 +37,7 @@ export function RoomHeader({ room, participantCount }: RoomHeaderProps) {
               <Home className="h-5 w-5 text-muted-foreground" />
               <span className="sr-only">홈으로</span>
             </Link>
-            
+
             <div>
               <div className="flex items-center gap-2">
                 <CalendarDays className="h-5 w-5 text-primary" />
@@ -66,7 +59,7 @@ export function RoomHeader({ room, participantCount }: RoomHeaderProps) {
               onClick={handleCopyCode}
               className="gap-2 font-mono"
             >
-              {copied ? (
+              {copiedCode ? (
                 <>
                   <Check className="h-4 w-4 text-available" />
                   복사됨
@@ -78,8 +71,18 @@ export function RoomHeader({ room, participantCount }: RoomHeaderProps) {
                 </>
               )}
             </Button>
-            <Button size="sm" onClick={handleShare}>
-              공유하기
+            <Button size="sm" onClick={handleCopyUrl} className="gap-2">
+              {copiedUrl ? (
+                <>
+                  <Check className="h-4 w-4" />
+                  URL 복사됨
+                </>
+              ) : (
+                <>
+                  <Link2 className="h-4 w-4" />
+                  URL 복사
+                </>
+              )}
             </Button>
           </div>
         </div>

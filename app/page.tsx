@@ -1,278 +1,279 @@
-"use client"
+"use client";
 
-import { useState, useEffect } from "react"
-import { useRouter } from "next/navigation"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
-import { Badge } from "@/components/ui/badge"
-import { FieldGroup, Field, FieldLabel } from "@/components/ui/field"
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog"
-import { CalendarDays, Users, Plus, LogIn, UserPlus, Hash, LogOut, DoorOpen } from "lucide-react"
-import { createClient } from "@/lib/supabase/client"
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
+import { Input } from "@/components/ui/input";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import {
+  clearGlobalSessionFromStorage,
   getGlobalSessionFromStorage,
   setGlobalSessionToStorage,
-  clearGlobalSessionFromStorage,
-} from "@/lib/auth"
-import type { GlobalSessionPayload } from "@/lib/types"
+} from "@/lib/auth";
+import type { GlobalSessionPayload } from "@/lib/types";
+import {
+  CalendarDays,
+  DoorOpen,
+  Hash,
+  LogIn,
+  LogOut,
+  Plus,
+  UserPlus,
+  Users,
+} from "lucide-react";
+import { useRouter } from "next/navigation";
+import { useEffect, useState } from "react";
 
 function generateRoomCode(): string {
-  const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
-  let code = ""
+  const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+  let code = "";
   for (let i = 0; i < 6; i++) {
-    code += chars.charAt(Math.floor(Math.random() * chars.length))
+    code += chars.charAt(Math.floor(Math.random() * chars.length));
   }
-  return code
+  return code;
 }
 
 interface JoinedRoom {
-  id: string
-  name: string
-  code: string
-  createdAt: string
-  isHost: boolean
+  id: string;
+  name: string;
+  code: string;
+  createdAt: string;
+  isHost: boolean;
 }
 
 export default function HomePage() {
-  const router = useRouter()
-  const [roomName, setRoomName] = useState("")
-  const [joinCode, setJoinCode] = useState("")
-  const [isCreating, setIsCreating] = useState(false)
-  const [isJoining, setIsJoining] = useState(false)
-  const [error, setError] = useState("")
-  const [roomCount, setRoomCount] = useState<number | null>(null)
+  const router = useRouter();
+  const [roomName, setRoomName] = useState("");
+  const [joinCode, setJoinCode] = useState("");
+  const [isCreating, setIsCreating] = useState(false);
+  const [isJoining, setIsJoining] = useState(false);
+  const [error, setError] = useState("");
+  const [roomCount, setRoomCount] = useState<number | null>(null);
 
-  const [globalSession, setGlobalSession] = useState<GlobalSessionPayload | null>(null)
-  const [joinedRooms, setJoinedRooms] = useState<JoinedRoom[]>([])
-  const [isLoadingJoinedRooms, setIsLoadingJoinedRooms] = useState(false)
+  const [globalSession, setGlobalSession] =
+    useState<GlobalSessionPayload | null>(null);
+  const [joinedRooms, setJoinedRooms] = useState<JoinedRoom[]>([]);
+  const [isLoadingJoinedRooms, setIsLoadingJoinedRooms] = useState(false);
 
-  const [showAuthModal, setShowAuthModal] = useState(false)
-  const [authMode, setAuthMode] = useState<"signup" | "login">("signup")
-  const [authName, setAuthName] = useState("")
-  const [authPassword, setAuthPassword] = useState("")
-  const [authConfirmPassword, setAuthConfirmPassword] = useState("")
-  const [authError, setAuthError] = useState("")
-  const [isAuthSubmitting, setIsAuthSubmitting] = useState(false)
+  const [showAuthModal, setShowAuthModal] = useState(false);
+  const [authMode, setAuthMode] = useState<"signup" | "login">("signup");
+  const [authName, setAuthName] = useState("");
+  const [authPassword, setAuthPassword] = useState("");
+  const [authConfirmPassword, setAuthConfirmPassword] = useState("");
+  const [authError, setAuthError] = useState("");
+  const [isAuthSubmitting, setIsAuthSubmitting] = useState(false);
 
   useEffect(() => {
     fetch("/api/rooms/count")
       .then((res) => res.json())
       .then((data) => setRoomCount(data.count))
-      .catch(console.error)
-  }, [])
+      .catch(console.error);
+  }, []);
 
   useEffect(() => {
-    const session = getGlobalSessionFromStorage()
+    const session = getGlobalSessionFromStorage();
     if (session) {
-      setGlobalSession(session)
-      void loadJoinedRooms(session.name)
+      setGlobalSession(session);
+      void loadJoinedRooms(session.name);
     }
-  }, [])
+  }, []);
 
   const loadJoinedRooms = async (name: string) => {
-    setIsLoadingJoinedRooms(true)
+    setIsLoadingJoinedRooms(true);
     try {
       const res = await fetch("/api/rooms/by-user", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ name }),
-      })
-      const data = await res.json()
+      });
+      const data = await res.json();
       if (!res.ok) {
-        console.error(data.error || "참여한 모임을 불러오지 못했습니다.")
-        setJoinedRooms([])
-        return
+        console.error(data.error || "참여한 모임을 불러오지 못했습니다.");
+        setJoinedRooms([]);
+        return;
       }
-      setJoinedRooms(data.rooms || [])
+      setJoinedRooms(data.rooms || []);
     } catch (e) {
-      console.error(e)
-      setJoinedRooms([])
+      console.error(e);
+      setJoinedRooms([]);
     } finally {
-      setIsLoadingJoinedRooms(false)
+      setIsLoadingJoinedRooms(false);
     }
-  }
+  };
 
   const requireLogin = () => {
     if (!globalSession) {
-      setError("로그인 후 이용하실 수 있습니다.")
-      setAuthMode("login")
-      setShowAuthModal(true)
-      return false
+      setError("로그인 후 이용하실 수 있습니다.");
+      setAuthMode("login");
+      setShowAuthModal(true);
+      return false;
     }
-    return true
-  }
+    return true;
+  };
 
   const handleCreateRoom = async () => {
-    if (!requireLogin()) return
+    if (!requireLogin()) return;
 
     if (!roomName.trim()) {
-      setError("모임 이름을 입력해주세요.")
-      return
+      setError("모임 이름을 입력해주세요.");
+      return;
     }
 
-    setIsCreating(true)
-    setError("")
+    setIsCreating(true);
+    setError("");
 
     try {
-      const supabase = createClient()
-      const code = generateRoomCode()
+      const code = generateRoomCode();
 
-      const { data: room, error: insertError } = await supabase
-        .from("rooms")
-        .insert({ name: roomName.trim(), code })
-        .select()
-        .single()
+      const res = await fetch("/api/rooms", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: roomName.trim(),
+          hostName: globalSession?.name ?? "",
+        }),
+      });
 
-      if (insertError || !room) throw insertError
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error);
 
-      if (globalSession) {
-        const { data: host, error: participantError } = await supabase
-          .from("participants")
-          .insert({
-            room_id: room.id,
-            name: globalSession.name,
-            is_host: true,
-          })
-          .select("id")
-          .single()
-
-        if (participantError) {
-          console.error(participantError)
-        } else if (host) {
-          await supabase
-            .from("rooms")
-            .update({ creator_participant_id: host.id })
-            .eq("id", room.id)
-        }
-      }
-
-      router.push(`/room/${room.code}`)
+      router.push(`/room/${data.room.code}`);
     } catch (err) {
-      console.error(err)
-      setError("모임 생성에 실패했습니다. 다시 시도해주세요.")
+      console.error(err);
+      setError("모임 생성에 실패했습니다. 다시 시도해주세요.");
     } finally {
-      setIsCreating(false)
+      setIsCreating(false);
     }
-  }
+  };
 
   const handleJoinRoom = async () => {
-    if (!requireLogin()) return
+    if (!requireLogin()) return;
 
     if (!joinCode.trim()) {
-      setError("참여 코드를 입력해주세요.")
-      return
+      setError("참여 코드를 입력해주세요.");
+      return;
     }
 
-    setIsJoining(true)
-    setError("")
+    setIsJoining(true);
+    setError("");
 
     try {
-      const supabase = createClient()
-      const { data, error: fetchError } = await supabase
-        .from("rooms")
-        .select()
-        .eq("code", joinCode.trim().toUpperCase())
-        .single()
+      const res = await fetch(
+        `/api/rooms?code=${encodeURIComponent(joinCode.trim().toUpperCase())}`,
+      );
+      const data = await res.json();
 
-      if (fetchError || !data) {
-        setError("존재하지 않는 모임입니다. 코드를 확인해주세요.")
-        return
+      if (!res.ok) {
+        setError("존재하지 않는 모임입니다. 코드를 확인해주세요.");
+        return;
       }
 
-      router.push(`/room/${data.code}`)
+      router.push(`/room/${data.room.code}`);
     } catch (err) {
-      console.error(err)
-      setError("모임 참여에 실패했습니다. 다시 시도해주세요.")
+      console.error(err);
+      setError("모임 참여에 실패했습니다. 다시 시도해주세요.");
     } finally {
-      setIsJoining(false)
+      setIsJoining(false);
     }
-  }
+  };
 
   const handleAuthSubmit = async () => {
     if (!authName.trim() || !authPassword.trim()) {
-      setAuthError("이름과 비밀번호를 입력해주세요.")
-      return
+      setAuthError("이름과 비밀번호를 입력해주세요.");
+      return;
     }
 
     if (authPassword.length < 4) {
-      setAuthError("비밀번호는 4자 이상이어야 합니다.")
-      return
+      setAuthError("비밀번호는 4자 이상이어야 합니다.");
+      return;
     }
 
     if (authMode === "signup" && authPassword !== authConfirmPassword) {
-      setAuthError("비밀번호가 일치하지 않습니다.")
-      return
+      setAuthError("비밀번호가 일치하지 않습니다.");
+      return;
     }
 
-    setIsAuthSubmitting(true)
-    setAuthError("")
+    setIsAuthSubmitting(true);
+    setAuthError("");
 
     try {
       if (authMode === "signup") {
         const signupRes = await fetch("/api/auth/signup", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ name: authName.trim(), password: authPassword }),
-        })
+          body: JSON.stringify({
+            name: authName.trim(),
+            password: authPassword,
+          }),
+        });
 
-        const signupData = await signupRes.json()
+        const signupData = await signupRes.json();
 
         if (!signupRes.ok) {
-          setAuthError(signupData.error || "회원가입에 실패했습니다.")
-          return
+          setAuthError(signupData.error || "회원가입에 실패했습니다.");
+          return;
         }
 
         const session: GlobalSessionPayload = {
           name: signupData.name ?? authName.trim(),
           expiresAt: Date.now() + 30 * 60 * 1000,
-        }
-        setGlobalSession(session)
-        setGlobalSessionToStorage(session)
-        void loadJoinedRooms(session.name)
-        resetAuthModal()
+        };
+        setGlobalSession(session);
+        setGlobalSessionToStorage(session);
+        void loadJoinedRooms(session.name);
+        resetAuthModal();
       } else {
         const loginRes = await fetch("/api/auth/global-login", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ name: authName.trim(), password: authPassword }),
-        })
+          body: JSON.stringify({
+            name: authName.trim(),
+            password: authPassword,
+          }),
+        });
 
-        const loginData = await loginRes.json()
+        const loginData = await loginRes.json();
 
         if (!loginRes.ok) {
-          setAuthError(loginData.error || "로그인에 실패했습니다.")
-          return
+          setAuthError(loginData.error || "로그인에 실패했습니다.");
+          return;
         }
 
-        const session = loginData.session as GlobalSessionPayload
-        setGlobalSession(session)
-        setGlobalSessionToStorage(session)
-        void loadJoinedRooms(session.name)
-        resetAuthModal()
+        const session = loginData.session as GlobalSessionPayload;
+        setGlobalSession(session);
+        setGlobalSessionToStorage(session);
+        void loadJoinedRooms(session.name);
+        resetAuthModal();
       }
     } catch (err) {
-      console.error(err)
-      setAuthError("처리에 실패했습니다. 다시 시도해주세요.")
+      console.error(err);
+      setAuthError("처리에 실패했습니다. 다시 시도해주세요.");
     } finally {
-      setIsAuthSubmitting(false)
+      setIsAuthSubmitting(false);
     }
-  }
+  };
 
   const resetAuthModal = () => {
-    setShowAuthModal(false)
-    setAuthName("")
-    setAuthPassword("")
-    setAuthConfirmPassword("")
-    setAuthError("")
-  }
+    setShowAuthModal(false);
+    setAuthName("");
+    setAuthPassword("");
+    setAuthConfirmPassword("");
+    setAuthError("");
+  };
 
   const handleLogout = () => {
-    clearGlobalSessionFromStorage()
-    setGlobalSession(null)
-    setJoinedRooms([])
-  }
+    clearGlobalSessionFromStorage();
+    setGlobalSession(null);
+    setJoinedRooms([]);
+  };
 
   return (
     <main className="min-h-screen flex items-center justify-center p-4 bg-background">
@@ -309,8 +310,8 @@ export default function HomePage() {
                   variant="outline"
                   className="h-8 px-3 gap-1"
                   onClick={() => {
-                    setAuthMode("login")
-                    setShowAuthModal(true)
+                    setAuthMode("login");
+                    setShowAuthModal(true);
                   }}
                 >
                   <LogIn className="h-3 w-3" />
@@ -320,8 +321,8 @@ export default function HomePage() {
                   size="sm"
                   className="h-8 px-3 gap-1"
                   onClick={() => {
-                    setAuthMode("signup")
-                    setShowAuthModal(true)
+                    setAuthMode("signup");
+                    setShowAuthModal(true);
                   }}
                 >
                   <UserPlus className="h-3 w-3" />
@@ -338,7 +339,9 @@ export default function HomePage() {
               <CalendarDays className="h-10 w-10 text-primary" />
             </div>
           </div>
-          <h1 className="text-3xl font-bold text-foreground text-balance">모임 날짜 조율</h1>
+          <h1 className="text-3xl font-bold text-foreground text-balance">
+            모임 날짜 조율
+          </h1>
           <p className="text-muted-foreground mt-2 text-balance">
             참석자들의 가능한 날짜를 한눈에 확인하세요
           </p>
@@ -352,8 +355,7 @@ export default function HomePage() {
             <Tabs defaultValue="create" className="w-full">
               <TabsList className="grid w-full grid-cols-2">
                 <TabsTrigger value="create" className="gap-2">
-                  <Plus className="h-4 w-4" />
-                  새 모임 만들기
+                  <Plus className="h-4 w-4" />새 모임 만들기
                 </TabsTrigger>
                 <TabsTrigger value="join" className="gap-2">
                   <LogIn className="h-4 w-4" />
@@ -396,7 +398,9 @@ export default function HomePage() {
                       id="joinCode"
                       placeholder="예: ABC123"
                       value={joinCode}
-                      onChange={(e) => setJoinCode(e.target.value.toUpperCase())}
+                      onChange={(e) =>
+                        setJoinCode(e.target.value.toUpperCase())
+                      }
                       onKeyDown={(e) => e.key === "Enter" && handleJoinRoom()}
                       maxLength={6}
                       className="uppercase tracking-widest text-center font-mono"
@@ -419,7 +423,9 @@ export default function HomePage() {
             </Tabs>
 
             {error && (
-              <p className="text-destructive text-sm text-center mt-4">{error}</p>
+              <p className="text-destructive text-sm text-center mt-4">
+                {error}
+              </p>
             )}
           </CardContent>
         </Card>
@@ -428,8 +434,7 @@ export default function HomePage() {
           <Card className="mt-4">
             <CardHeader>
               <CardTitle className="flex items-center gap-2 text-sm">
-                <DoorOpen className="h-4 w-4" />
-                내 모임
+                <DoorOpen className="h-4 w-4" />내 모임
               </CardTitle>
             </CardHeader>
             <CardContent>
@@ -452,7 +457,10 @@ export default function HomePage() {
                             {room.name}
                           </span>
                           {room.isHost && (
-                            <Badge variant="outline" className="text-[10px] px-1.5 py-0">
+                            <Badge
+                              variant="outline"
+                              className="text-[10px] px-1.5 py-0"
+                            >
                               방장
                             </Badge>
                           )}
@@ -497,7 +505,10 @@ export default function HomePage() {
       </div>
 
       {/* Auth Modal */}
-      <Dialog open={showAuthModal} onOpenChange={(open) => !open && resetAuthModal()}>
+      <Dialog
+        open={showAuthModal}
+        onOpenChange={(open) => !open && resetAuthModal()}
+      >
         <DialogContent>
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
@@ -514,10 +525,11 @@ export default function HomePage() {
               )}
             </DialogTitle>
             <DialogDescription>
-              이름과 비밀번호로 간단히 계정을 만들어 여러 모임에 참여할 수 있습니다.
+              이름과 비밀번호로 간단히 계정을 만들어 여러 모임에 참여할 수
+              있습니다.
             </DialogDescription>
           </DialogHeader>
-          <div className="space-y-4 pt-4">
+          <form onSubmit={handleAuthSubmit} className="space-y-4 pt-4">
             <FieldGroup>
               <Field>
                 <FieldLabel htmlFor="authName">이름</FieldLabel>
@@ -540,7 +552,9 @@ export default function HomePage() {
               </Field>
               {authMode === "signup" && (
                 <Field>
-                  <FieldLabel htmlFor="authConfirmPassword">비밀번호 확인</FieldLabel>
+                  <FieldLabel htmlFor="authConfirmPassword">
+                    비밀번호 확인
+                  </FieldLabel>
                   <Input
                     id="authConfirmPassword"
                     type="password"
@@ -556,7 +570,7 @@ export default function HomePage() {
               <p className="text-destructive text-sm">{authError}</p>
             )}
             <Button
-              onClick={handleAuthSubmit}
+              type="submit"
               disabled={isAuthSubmitting}
               className="w-full"
             >
@@ -567,20 +581,24 @@ export default function HomePage() {
                   : "로그인"}
             </Button>
             <p className="text-[11px] text-muted-foreground">
-              이미 계정이 있으신가요?{" "}
+              {authMode === "signup"
+                ? "이미 계정이 있으신가요?"
+                : "계정이 없으신가요?"}
               <button
                 type="button"
                 className="underline underline-offset-2"
                 onClick={() =>
-                  setAuthMode((prev) => (prev === "signup" ? "login" : "signup"))
+                  setAuthMode((prev) =>
+                    prev === "signup" ? "login" : "signup",
+                  )
                 }
               >
                 {authMode === "signup" ? "로그인하기" : "회원가입하기"}
               </button>
             </p>
-          </div>
+          </form>
         </DialogContent>
       </Dialog>
     </main>
-  )
+  );
 }

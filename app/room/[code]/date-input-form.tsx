@@ -1,8 +1,8 @@
 "use client";
 
-import { useState } from "react";
-import { createClient } from "@/lib/supabase/client";
-import type { ParticipantWithDateRanges } from "@/lib/types";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Calendar, CalendarDayButton } from "@/components/ui/calendar";
 import {
   Card,
   CardContent,
@@ -10,17 +10,17 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
-import { Calendar } from "@/components/ui/calendar";
-import { Badge } from "@/components/ui/badge";
-import { CalendarPlus, Check, X, Trash2 } from "lucide-react";
-import { format, eachDayOfInterval, parseISO, isSameDay } from "date-fns";
+import type { ParticipantWithDateRanges } from "@/lib/types";
+import { cn } from "@/lib/utils";
+import { eachDayOfInterval, format, isSameDay, parseISO } from "date-fns";
 import { ko } from "date-fns/locale";
+import { CalendarPlus, Check, Trash2, X } from "lucide-react";
+import { useState } from "react";
 import type { DateRange as DayPickerDateRange } from "react-day-picker";
 
 interface DateInputFormProps {
   participant: ParticipantWithDateRanges;
-  onDateRangeAdded: () => void;
+  onDateRangeAdded?: () => void;
 }
 
 export function DateInputForm({
@@ -39,24 +39,27 @@ export function DateInputForm({
     setIsSubmitting(true);
 
     try {
-      const supabase = createClient();
-
       const startDate = format(selectedRange.from, "yyyy-MM-dd");
       const endDate = selectedRange.to
         ? format(selectedRange.to, "yyyy-MM-dd")
         : startDate;
 
-      // 방(room) 기준으로 직접 date_ranges 를 생성
-      await supabase.from("date_ranges").insert({
-        participant_id: participant.id,
-        room_id: participant.room_id,
-        start_date: startDate,
-        end_date: endDate,
-        is_available: isAvailable,
+      const res = await fetch("/api/date-ranges", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          participantId: participant.id,
+          roomId: participant.room_id,
+          startDate,
+          endDate,
+          isAvailable,
+        }),
       });
 
+      if (!res.ok) throw new Error("Failed to save date range");
+
       setSelectedRange(undefined);
-      onDateRangeAdded();
+      onDateRangeAdded?.();
     } catch (err) {
       console.error(err);
     } finally {
@@ -65,9 +68,15 @@ export function DateInputForm({
   };
 
   const handleDeleteDateRange = async (dateRangeId: string) => {
-    const supabase = createClient();
-    await supabase.from("date_ranges").delete().eq("id", dateRangeId);
-    onDateRangeAdded();
+    try {
+      const res = await fetch(`/api/date-ranges/${dateRangeId}`, {
+        method: "DELETE",
+      });
+      if (!res.ok) throw new Error("Failed to delete date range");
+      onDateRangeAdded?.();
+    } catch (err) {
+      console.error(err);
+    }
   };
 
   const getExistingDates = () => {
@@ -92,7 +101,6 @@ export function DateInputForm({
 
   const { availableDates, unavailableDates } = getExistingDates();
 
-  // Get selected range dates for visual feedback
   const getSelectedRangeDates = () => {
     if (!selectedRange?.from) return [];
 
@@ -105,16 +113,21 @@ export function DateInputForm({
 
   const selectedRangeDates = getSelectedRangeDates();
 
-  // Custom day class function for selection preview
-  const getModifiersClassNames = () => {
-    const baseClasses = {
-      available: "bg-muted text-muted-foreground rounded-md",
-      unavailable:
-        "bg-red-100 dark:bg-red-950/40 text-red-700 dark:text-red-300 rounded-md",
-    };
+  const rangeSelectionClasses = isAvailable
+    ? "data-[range-start=true]:bg-available data-[range-start=true]:text-available-foreground data-[range-end=true]:bg-available data-[range-end=true]:text-available-foreground data-[range-middle=true]:bg-available/50 data-[range-middle=true]:text-foreground dark:data-[range-middle=true]:bg-available/40"
+    : "data-[range-start=true]:bg-unavailable data-[range-start=true]:text-unavailable-foreground data-[range-end=true]:bg-unavailable data-[range-end=true]:text-unavailable-foreground data-[range-middle=true]:bg-unavailable/50 data-[range-middle=true]:text-unavailable-foreground dark:data-[range-middle=true]:bg-unavailable/40";
 
-    return baseClasses;
-  };
+  const rangeCellClasses = isAvailable
+    ? {
+        range_start: "rounded-l-md bg-available/50",
+        range_middle: "rounded-none bg-available/35",
+        range_end: "rounded-r-md bg-available/50",
+      }
+    : {
+        range_start: "rounded-l-md bg-unavailable/50",
+        range_middle: "rounded-none bg-unavailable/35",
+        range_end: "rounded-r-md bg-unavailable/50",
+      };
 
   return (
     <Card>
@@ -172,34 +185,38 @@ export function DateInputForm({
               selectionPreview: selectedRangeDates,
             }}
             modifiersClassNames={{
-              ...getModifiersClassNames(),
+              available:
+                "bg-available/30 text-foreground font-medium rounded-md",
+              unavailable:
+                "bg-unavailable/30 text-unavailable-foreground font-medium rounded-md",
               selectionPreview: isAvailable
-                ? "ring-2 ring-inset ring-zinc-400 dark:ring-zinc-500"
-                : "ring-2 ring-inset ring-red-300 dark:ring-red-700",
+                ? "ring-2 ring-inset ring-available/70"
+                : "ring-2 ring-inset ring-unavailable/70",
+            }}
+            components={{
+              DayButton: ({ className, ...props }) => (
+                <CalendarDayButton
+                  className={cn(rangeSelectionClasses, className)}
+                  {...props}
+                />
+              ),
             }}
             classNames={{
               root: "w-full",
               months: "w-full",
-              range_start: isAvailable
-                ? "rounded-l-md bg-zinc-200 dark:bg-zinc-700"
-                : "rounded-l-md bg-red-200 dark:bg-red-900/60",
-              range_middle: isAvailable
-                ? "rounded-none bg-zinc-100 dark:bg-zinc-800"
-                : "rounded-none bg-red-100 dark:bg-red-950/40",
-              range_end: isAvailable
-                ? "rounded-r-md bg-zinc-200 dark:bg-zinc-700"
-                : "rounded-r-md bg-red-200 dark:bg-red-900/60",
+              ...rangeCellClasses,
             }}
           />
         </div>
 
         {selectedRange?.from && (
           <div
-            className={`text-sm p-3 rounded-lg border ${
+            className={cn(
+              "text-sm p-3 rounded-lg border",
               isAvailable
-                ? "bg-zinc-50 dark:bg-zinc-900 border-zinc-200 dark:border-zinc-700"
-                : "bg-red-50 dark:bg-red-950/30 border-red-200 dark:border-red-800"
-            }`}
+                ? "bg-available/10 border-available/40"
+                : "bg-unavailable/10 border-unavailable/40"
+            )}
           >
             <span className="font-medium">
               {isAvailable ? "가능" : "불가능"} 기간:
@@ -242,8 +259,8 @@ export function DateInputForm({
                       variant="secondary"
                       className={
                         range.is_available
-                          ? "bg-zinc-200 dark:bg-zinc-700 text-zinc-700 dark:text-zinc-200"
-                          : "bg-red-100 dark:bg-red-900/60 text-red-700 dark:text-red-200"
+                          ? "bg-available/20 text-foreground border border-available/40"
+                          : "bg-unavailable/20 text-unavailable-foreground border border-unavailable/40"
                       }
                     >
                       {range.is_available ? "가능" : "불가능"}
