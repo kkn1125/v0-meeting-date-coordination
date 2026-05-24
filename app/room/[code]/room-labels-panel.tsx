@@ -1,27 +1,28 @@
-"use client"
+"use client";
 
-import { useState } from "react"
-import { format, parseISO } from "date-fns"
-import { ko } from "date-fns/locale"
-import { Tag, Trash2, Pencil, Check, X } from "lucide-react"
-import { Button } from "@/components/ui/button"
+import { Button } from "@/components/ui/button";
 import {
   Card,
   CardContent,
   CardDescription,
   CardHeader,
   CardTitle,
-} from "@/components/ui/card"
-import { Input } from "@/components/ui/input"
-import { Switch } from "@/components/ui/switch"
-import type { RoomLabel } from "@/lib/types"
+} from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Switch } from "@/components/ui/switch";
+import { toISOStringValue } from "@/lib/dates";
+import type { RoomLabel } from "@/lib/types";
+import { format } from "date-fns";
+import { ko } from "date-fns/locale";
+import { Check, Pencil, Tag, Trash2, X } from "lucide-react";
+import { useState } from "react";
 
 interface RoomLabelsPanelProps {
-  roomId: string
-  labels: RoomLabel[]
-  currentParticipantId: string
-  currentParticipantIsHost: boolean
-  onLabelsChange: (labels: RoomLabel[]) => void
+  roomId: string;
+  labels: RoomLabel[];
+  currentParticipantId: string;
+  currentParticipantIsHost: boolean;
+  onLabelsChange: (labels: RoomLabel[]) => void;
 }
 
 export function RoomLabelsPanel({
@@ -31,31 +32,31 @@ export function RoomLabelsPanel({
   currentParticipantIsHost,
   onLabelsChange,
 }: RoomLabelsPanelProps) {
-  const [newName, setNewName] = useState("")
-  const [isSubmitting, setIsSubmitting] = useState(false)
-  const [editingId, setEditingId] = useState<string | null>(null)
-  const [editingName, setEditingName] = useState("")
+  const [newName, setNewName] = useState("");
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editingName, setEditingName] = useState("");
 
   const handleCreate = async () => {
-    const name = newName.trim()
-    if (!name) return
-    setIsSubmitting(true)
+    const name = newName.trim();
+    if (!name) return;
+    setIsSubmitting(true);
     try {
       const res = await fetch(`/api/rooms/${roomId}/labels`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ participantId: currentParticipantId, name }),
-      })
-      const data = await res.json()
-      if (!res.ok) throw new Error(data.error)
-      onLabelsChange([...labels, data.label])
-      setNewName("")
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error);
+      onLabelsChange([...labels, data.label]);
+      setNewName("");
     } catch (err) {
-      console.error(err)
+      console.error(err);
     } finally {
-      setIsSubmitting(false)
+      setIsSubmitting(false);
     }
-  }
+  };
 
   const handleToggleValid = async (label: RoomLabel, isValid: boolean) => {
     try {
@@ -66,21 +67,21 @@ export function RoomLabelsPanel({
           participantId: currentParticipantId,
           isValid,
         }),
-      })
-      const data = await res.json()
-      if (!res.ok) throw new Error(data.error)
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error);
       onLabelsChange(
-        labels.map((l) => (l.id === label.id ? { ...l, ...data.label } : l))
-      )
+        labels.map((l) => (l.id === label.id ? { ...l, ...data.label } : l)),
+      );
     } catch (err) {
-      console.error(err)
+      console.error(err);
     }
-  }
+  };
 
   const handleSaveName = async (labelId: string) => {
-    const name = editingName.trim()
-    if (!name) return
-    setIsSubmitting(true)
+    const name = editingName.trim();
+    if (!name) return;
+    setIsSubmitting(true);
     try {
       const res = await fetch(`/api/rooms/${roomId}/labels/${labelId}`, {
         method: "PATCH",
@@ -89,19 +90,19 @@ export function RoomLabelsPanel({
           participantId: currentParticipantId,
           name,
         }),
-      })
-      const data = await res.json()
-      if (!res.ok) throw new Error(data.error)
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error);
       onLabelsChange(
-        labels.map((l) => (l.id === labelId ? { ...l, ...data.label } : l))
-      )
-      setEditingId(null)
+        labels.map((l) => (l.id === labelId ? { ...l, ...data.label } : l)),
+      );
+      setEditingId(null);
     } catch (err) {
-      console.error(err)
+      console.error(err);
     } finally {
-      setIsSubmitting(false)
+      setIsSubmitting(false);
     }
-  }
+  };
 
   const handleDelete = async (labelId: string) => {
     try {
@@ -109,18 +110,18 @@ export function RoomLabelsPanel({
         method: "DELETE",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ participantId: currentParticipantId }),
-      })
-      const data = await res.json()
-      if (!res.ok) throw new Error(data.error)
-      onLabelsChange(data.labels ?? labels.filter((l) => l.id !== labelId))
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error);
+      onLabelsChange(data.labels ?? labels.filter((l) => l.id !== labelId));
     } catch (err) {
-      console.error(err)
+      console.error(err);
     }
-  }
+  };
 
   const canDelete = (label: RoomLabel) =>
     currentParticipantIsHost ||
-    label.created_by_participant_id === currentParticipantId
+    label.created_by_participant_id === currentParticipantId;
 
   return (
     <Card>
@@ -129,7 +130,9 @@ export function RoomLabelsPanel({
           <Tag className="h-5 w-5" />
           라벨
         </CardTitle>
-        <CardDescription>기간 분류용 라벨을 등록하고 관리합니다</CardDescription>
+        <CardDescription>
+          기간 분류용 라벨을 등록하고 관리합니다
+        </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
         <div className="flex gap-2">
@@ -150,11 +153,13 @@ export function RoomLabelsPanel({
         </div>
 
         {labels.length === 0 ? (
-          <p className="text-sm text-muted-foreground">등록된 라벨이 없습니다.</p>
+          <p className="text-sm text-muted-foreground">
+            등록된 라벨이 없습니다.
+          </p>
         ) : (
           <ul className="space-y-3">
             {labels.map((label) => {
-              const isEditing = editingId === label.id
+              const isEditing = editingId === label.id;
 
               return (
                 <li
@@ -198,9 +203,13 @@ export function RoomLabelsPanel({
                           {label.name}
                         </p>
                         <p className="text-xs text-muted-foreground mt-0.5">
-                          {format(parseISO(label.created_at), "yyyy.M.d", {
-                            locale: ko,
-                          })}{" "}
+                          {(() => {
+                            const iso = toISOStringValue(label.created_at);
+                            if (!iso) return "—";
+                            return format(new Date(iso), "yyyy.M.d", {
+                              locale: ko,
+                            });
+                          })()}{" "}
                           · {label.created_by_name ?? "—"} · 연관 기간{" "}
                           {label.date_range_count ?? 0}개
                         </p>
@@ -213,8 +222,8 @@ export function RoomLabelsPanel({
                           size="icon"
                           className="h-8 w-8"
                           onClick={() => {
-                            setEditingId(label.id)
-                            setEditingName(label.name)
+                            setEditingId(label.id);
+                            setEditingName(label.name);
                           }}
                         >
                           <Pencil className="h-4 w-4" />
@@ -242,11 +251,11 @@ export function RoomLabelsPanel({
                     />
                   </div>
                 </li>
-              )
+              );
             })}
           </ul>
         )}
       </CardContent>
     </Card>
-  )
+  );
 }

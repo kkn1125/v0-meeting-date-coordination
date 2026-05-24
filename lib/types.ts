@@ -102,5 +102,6 @@ export interface RangeSpan {
   isAvailable: boolean
   labelId: string | null
   labelIsValid: boolean | null
+  labelName: string | null
   dateRange: DateRange
 }

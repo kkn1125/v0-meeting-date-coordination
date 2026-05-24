@@ -1,15 +1,5 @@
-"use client"
+"use client";
 
-import { useEffect, useState, useCallback, useMemo } from "react"
-import { useRouter, useSearchParams } from "next/navigation"
-import type { Room, ParticipantWithDateRanges, Memo, RoomLabel } from "@/lib/types"
-import { getSessionFromStorage, getGlobalSessionFromStorage, clearSessionFromStorage } from "@/lib/auth"
-import { requestInboxRefresh } from "@/lib/inbox-events"
-import { useRoomSocket } from "@/hooks/use-room-socket"
-import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card"
-import { Badge } from "@/components/ui/badge"
-import { Button } from "@/components/ui/button"
-import { LogOut, ShieldCheck, User } from "lucide-react"
 import {
   AlertDialog,
   AlertDialogAction,
@@ -18,18 +8,37 @@ import {
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
-} from "@/components/ui/alert-dialog"
-import { RoomHeader } from "./room-header"
-import { ParticipantsList } from "./participants-list"
-import { AvailabilityCalendar } from "./availability-calendar"
-import { DateInputForm } from "./date-input-form"
-import { RoomLabelsPanel } from "./room-labels-panel"
+} from "@/components/ui/alert-dialog";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { useRoomSocket } from "@/hooks/use-room-socket";
+import {
+  clearSessionFromStorage,
+  getGlobalSessionFromStorage,
+  getSessionFromStorage,
+} from "@/lib/auth";
+import { requestInboxRefresh } from "@/lib/inbox-events";
+import type {
+  Memo,
+  ParticipantWithDateRanges,
+  Room,
+  RoomLabel,
+} from "@/lib/types";
+import { LogOut, ShieldCheck, User } from "lucide-react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { AvailabilityCalendar } from "./availability-calendar";
+import { DateInputForm } from "./date-input-form";
+import { ParticipantsList } from "./participants-list";
+import { RoomHeader } from "./room-header";
+import { RoomLabelsPanel } from "./room-labels-panel";
 
 interface RoomClientProps {
-  room: Room
-  initialParticipants: ParticipantWithDateRanges[]
-  initialMemos?: Memo[]
-  initialLabels?: RoomLabel[]
+  room: Room;
+  initialParticipants: ParticipantWithDateRanges[];
+  initialMemos?: Memo[];
+  initialLabels?: RoomLabel[];
 }
 
 export function RoomClient({
@@ -38,36 +47,38 @@ export function RoomClient({
   initialMemos = [],
   initialLabels = [],
 }: RoomClientProps) {
-  const [participants, setParticipants] = useState<ParticipantWithDateRanges[]>(initialParticipants)
-  const [memos, setMemos] = useState<Memo[]>(initialMemos)
-  const [labels, setLabels] = useState<RoomLabel[]>(initialLabels)
-  const [currentParticipant, setCurrentParticipant] = useState<ParticipantWithDateRanges | null>(null)
-  const [isMembershipInactive, setIsMembershipInactive] = useState(false)
-  const [isLoginRequired, setIsLoginRequired] = useState(false)
-  const router = useRouter()
-  const searchParams = useSearchParams()
+  const [participants, setParticipants] =
+    useState<ParticipantWithDateRanges[]>(initialParticipants);
+  const [memos, setMemos] = useState<Memo[]>(initialMemos);
+  const [labels, setLabels] = useState<RoomLabel[]>(initialLabels);
+  const [currentParticipant, setCurrentParticipant] =
+    useState<ParticipantWithDateRanges | null>(null);
+  const [isMembershipInactive, setIsMembershipInactive] = useState(false);
+  const [isLoginRequired, setIsLoginRequired] = useState(false);
+  const router = useRouter();
+  const searchParams = useSearchParams();
 
-  const initialDateRangeId = searchParams?.get("dateRangeId") ?? undefined
-  const initialMemoId = searchParams?.get("memoId") ?? undefined
+  const initialDateRangeId = searchParams?.get("dateRangeId") ?? undefined;
+  const initialMemoId = searchParams?.get("memoId") ?? undefined;
 
   const applyParticipantsUpdate = useCallback(
     (mapped: ParticipantWithDateRanges[]) => {
-      setParticipants(mapped)
+      setParticipants(mapped);
       setCurrentParticipant((prev) => {
-        if (!prev) return prev
-        return mapped.find((p) => p.id === prev.id) ?? prev
-      })
+        if (!prev) return prev;
+        return mapped.find((p) => p.id === prev.id) ?? prev;
+      });
     },
-    []
-  )
+    [],
+  );
 
   const applyMemosUpdate = useCallback((updatedMemos: Memo[]) => {
-    setMemos(updatedMemos)
-  }, [])
+    setMemos(updatedMemos);
+  }, []);
 
   const applyLabelsUpdate = useCallback((updatedLabels: RoomLabel[]) => {
-    setLabels(updatedLabels)
-  }, [])
+    setLabels(updatedLabels);
+  }, []);
 
   useRoomSocket(
     room.id,
@@ -75,54 +86,56 @@ export function RoomClient({
     applyParticipantsUpdate,
     applyMemosUpdate,
     requestInboxRefresh,
-    applyLabelsUpdate
-  )
+    applyLabelsUpdate,
+  );
 
   useEffect(() => {
     const loadMemos = async () => {
       try {
-        const res = await fetch(`/api/rooms/${room.id}/memos`)
-        const data = await res.json()
-        if (res.ok) setMemos(data.memos ?? [])
+        const res = await fetch(`/api/rooms/${room.id}/memos`);
+        const data = await res.json();
+        if (res.ok) setMemos(data.memos ?? []);
       } catch (error) {
-        console.error(error)
+        console.error(error);
       }
-    }
-    void loadMemos()
-  }, [room.id])
+    };
+    void loadMemos();
+  }, [room.id]);
 
   useEffect(() => {
-    const roomSession = getSessionFromStorage(room.id)
+    const roomSession = getSessionFromStorage(room.id);
     if (roomSession) {
-      const existingById = initialParticipants.find((p) => p.id === roomSession.participantId)
+      const existingById = initialParticipants.find(
+        (p) => p.id === roomSession.participantId,
+      );
       if (existingById) {
-        setCurrentParticipant(existingById)
-        return
+        setCurrentParticipant(existingById);
+        return;
       }
     }
 
-    const globalSession = getGlobalSessionFromStorage()
+    const globalSession = getGlobalSessionFromStorage();
     if (globalSession) {
       const existingByName = initialParticipants.find(
-        (p) => p.name === globalSession.name && !p.deleted_at
-      )
+        (p) => p.name === globalSession.name && !p.deleted_at,
+      );
       if (existingByName) {
-        setCurrentParticipant(existingByName)
+        setCurrentParticipant(existingByName);
       }
 
-      ;(async () => {
+      (async () => {
         try {
           const res = await fetch("/api/rooms/membership", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ roomId: room.id, name: globalSession.name }),
-          })
-          const data = await res.json()
-          if (!res.ok) return
+          });
+          const data = await res.json();
+          if (!res.ok) return;
 
           if (data.status === "inactive") {
-            setIsMembershipInactive(true)
-            return
+            setIsMembershipInactive(true);
+            return;
           }
 
           if (data.status === "none") {
@@ -131,38 +144,38 @@ export function RoomClient({
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({ name: globalSession.name.trim() }),
-              })
-              if (!joinRes.ok) throw new Error("Auto-join failed")
+              });
+              if (!joinRes.ok) throw new Error("Auto-join failed");
             } catch (e) {
-              console.error("Auto-join error:", e)
+              console.error("Auto-join error:", e);
             }
           }
         } catch (e) {
-          console.error(e)
+          console.error(e);
         }
-      })()
-      return
+      })();
+      return;
     }
 
-    setIsLoginRequired(true)
-  }, [room.id, initialParticipants])
+    setIsLoginRequired(true);
+  }, [room.id, initialParticipants]);
 
   const handleLogout = () => {
-    clearSessionFromStorage(room.id)
-    setCurrentParticipant(null)
-  }
+    clearSessionFromStorage(room.id);
+    setCurrentParticipant(null);
+  };
 
   const mentionedRangeIds = useMemo(() => {
-    if (!currentParticipant) return new Set<string>()
-    const ids = new Set<string>()
+    if (!currentParticipant) return new Set<string>();
+    const ids = new Set<string>();
     memos.forEach((memo) => {
       const mentioned = (memo.mentions ?? []).some(
-        (m) => m.mentioned_participant_id === currentParticipant.id
-      )
-      if (mentioned) ids.add(memo.date_range_id)
-    })
-    return ids
-  }, [memos, currentParticipant])
+        (m) => m.mentioned_participant_id === currentParticipant.id,
+      );
+      if (mentioned) ids.add(memo.date_range_id);
+    });
+    return ids;
+  }, [memos, currentParticipant]);
 
   return (
     <>
@@ -191,8 +204,7 @@ export function RoomClient({
               <Card>
                 <CardHeader>
                   <CardTitle className="flex items-center gap-2">
-                    <User className="h-5 w-5" />
-                    내 프로필
+                    <User className="h-5 w-5" />내 프로필
                   </CardTitle>
                 </CardHeader>
                 <CardContent className="space-y-3">
@@ -207,7 +219,10 @@ export function RoomClient({
                             현재 로그인
                           </Badge>
                           {currentParticipant.is_host && (
-                            <Badge variant="outline" className="text-xs flex items-center gap-1">
+                            <Badge
+                              variant="outline"
+                              className="text-xs flex items-center gap-1"
+                            >
                               <ShieldCheck className="h-3 w-3" />
                               호스트
                             </Badge>
@@ -229,7 +244,8 @@ export function RoomClient({
                     </>
                   ) : (
                     <p className="text-sm text-muted-foreground">
-                      아직 로그인된 참여자가 없습니다. 호스트가 아닌 경우 날짜 입력은 제한될 수 있습니다.
+                      아직 로그인된 참여자가 없습니다. 호스트가 아닌 경우 날짜
+                      입력은 제한될 수 있습니다.
                     </p>
                   )}
                 </CardContent>
@@ -275,8 +291,8 @@ export function RoomClient({
           <AlertDialogFooter>
             <AlertDialogAction
               onClick={() => {
-                setIsMembershipInactive(false)
-                router.push("/")
+                setIsMembershipInactive(false);
+                router.push("/");
               }}
             >
               확인
@@ -290,14 +306,15 @@ export function RoomClient({
           <AlertDialogHeader>
             <AlertDialogTitle>로그인이 필요합니다</AlertDialogTitle>
             <AlertDialogDescription>
-              이 모임에 참여하려면 먼저 메인 화면에서 이름을 입력해서 로그인해 주세요.
+              이 모임에 참여하려면 먼저 메인 화면에서 이름을 입력해서 로그인해
+              주세요.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogAction
               onClick={() => {
-                setIsLoginRequired(false)
-                router.push("/")
+                setIsLoginRequired(false);
+                router.push("/");
               }}
             >
               확인
@@ -306,5 +323,5 @@ export function RoomClient({
         </AlertDialogContent>
       </AlertDialog>
     </>
-  )
+  );
 }

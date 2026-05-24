@@ -34,3 +34,13 @@ export function toISODateString(value: unknown): string {
 
   return String(value)
 }
+
+/** timestamptz 등 → ISO 문자열 (parseISO용) */
+export function toISOStringValue(value: unknown): string {
+  if (value == null || value === "") return ""
+  if (value instanceof Date && !Number.isNaN(value.getTime())) {
+    return value.toISOString()
+  }
+  if (typeof value === "string") return value
+  return String(value)
+}

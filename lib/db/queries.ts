@@ -1,5 +1,5 @@
 import sql from "@/lib/db"
-import { toISODateString } from "@/lib/dates"
+import { toISODateString, toISOStringValue } from "@/lib/dates"
 import type {
   DateRange,
   InboxNotification,
@@ -448,8 +448,8 @@ export async function getRoomLabels(roomId: string): Promise<RoomLabel[]> {
     name: row.name,
     is_valid: row.is_valid,
     created_by_participant_id: row.created_by_participant_id,
-    created_at: row.created_at,
-    updated_at: row.updated_at,
+    created_at: toISOStringValue(row.created_at),
+    updated_at: toISOStringValue(row.updated_at),
     created_by_name: row.created_by_name,
     date_range_count: Number(row.date_range_count),
   }))
@@ -508,7 +508,13 @@ export async function createRoomLabel(data: {
       created_at,
       updated_at
   `
-  return { ...rows[0], date_range_count: 0 }
+  const row = rows[0]
+  return {
+    ...row,
+    created_at: toISOStringValue(row.created_at),
+    updated_at: toISOStringValue(row.updated_at),
+    date_range_count: 0,
+  }
 }
 
 export async function updateRoomLabel(data: {
@@ -537,7 +543,13 @@ export async function updateRoomLabel(data: {
       created_at,
       updated_at
   `
-  return rows[0] ?? null
+  const row = rows[0]
+  if (!row) return null
+  return {
+    ...row,
+    created_at: toISOStringValue(row.created_at),
+    updated_at: toISOStringValue(row.updated_at),
+  }
 }
 
 export async function deleteRoomLabel(data: {
